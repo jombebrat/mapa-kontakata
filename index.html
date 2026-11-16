@@ -106,6 +106,9 @@ html.sheet-tall .fab,html.sheet-tall .progress{opacity:0;pointer-events:none}
 .sub{display:block;margin-top:2px;font-size:15px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub .warn-dot{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;border:2px solid var(--cinnabar);vertical-align:1px}
 .row-meta{flex:none;font-size:15px;color:var(--lapis);font-weight:500}
+.tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:6px;background:#FBF5E6;color:#7A5A14;font:500 12px/1.5 var(--sans);vertical-align:3px}
+.d-msg{margin:12px 0 0;padding:10px 12px;border-left:3px solid var(--gold);background:#FBF8F0;border-radius:0 10px 10px 0;font-size:15px;color:var(--ink);white-space:pre-line}
+.d-msg small{display:block;margin-bottom:2px;color:var(--muted);font-size:13px}
 .empty{padding:28px 22px;color:var(--muted);font-size:16px;text-align:center}
 .hint{margin:14px 18px 0;font-size:15px;color:var(--muted)}
 
@@ -253,7 +256,7 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
   del(k){ try { localStorage.removeItem(k); } catch {} }
 };
-const K = { contacts:'mk.contacts', geo:'mk.geo', pins:'mk.pins', loc:'mk.loc' };
+const K = { contacts:'mk.contacts', extra:'mk.extra', hidden:'mk.hidden', geo:'mk.geo', pins:'mk.pins', loc:'mk.loc' };
 
 /* ---------- vCard parsing ---------- */
 function unescapeText(s){ return s.replace(/\\([nN,;:\\])/g, (m, c) => (c === 'n' || c === 'N') ? '\n' : c); }
@@ -322,7 +325,7 @@ function parseVCards(text){
       while (value.endsWith('=') && i + 1 < lines.length){ value = value.slice(0, -1) + lines[++i]; }
       value = decodeQP(value, charset);
     }
-    if (name === 'BEGIN' && /vcard/i.test(value)){ card = { fn:'', n:null, org:'', nick:'', tels:[], adrs:[], ablabel:{}, abadr:{} }; continue; }
+    if (name === 'BEGIN' && /vcard/i.test(value)){ card = { fn:'', n:null, org:'', nick:'', tels:[], emails:[], adrs:[], ablabel:{}, abadr:{}, note:'', url:'', geo:null, src:'' }; continue; }
     if (!card) continue;
     if (enc === 'B' || enc === 'BASE64') continue;
     switch (name){
@@ -338,6 +341,11 @@ function parseVCards(text){
       }
       case 'X-ABLABEL': if (group) card.ablabel[group] = unescapeText(value).trim(); break;
       case 'X-ABADR': if (group) card.abadr[group] = value.trim().toLowerCase(); break;
+      case 'EMAIL': { const v = unescapeText(value).trim(); if (v) card.emails.push(v); break; }
+      case 'NOTE': card.note = unescapeText(value).trim(); break;
+      case 'URL': if (!card.url) card.url = unescapeText(value).trim(); break;
+      case 'GEO': { const m = value.replace(/^geo:/i, '').split(/[;,]/).map(Number); if (m.length >= 2 && m.every(isFinite)) card.geo = { lat: m[0], lng: m[1] }; break; }
+      case 'X-MAPA-IZVOR': card.src = unescapeText(value).trim(); break;
       case 'END': if (/vcard/i.test(value)){ cards.push(card); card = null; } break;
     }
   }
@@ -359,49 +367,83 @@ function parseVCards(text){
     });
     let id = hash(norm(name) + '|' + (tels[0] ? tels[0].v.replace(/\D/g, '') : '') + '|' + (adrs[0] ? adrs[0].key : ''));
     seen[id] = (seen[id] || 0) + 1; if (seen[id] > 1) id += '-' + seen[id];
-    return { id, name, org: c.org && c.org !== name ? c.org : '', tels, adrs };
+    const out = { id, name, org: c.org && c.org !== name ? c.org : '', tels, adrs };
+    if (c.emails.length) out.emails = c.emails;
+    if (c.note) out.note = c.note;
+    if (/^https?:\/\//i.test(c.url)) out.url = c.url;
+    if (c.geo) out.geo = c.geo;
+    if (c.src) out.src = c.src;
+    return out;
   });
 }
 
 /* ---------- state ---------- */
 let contacts = store.get(K.contacts, []);
+let extra = store.get(K.extra, []);
+let hidden = store.get(K.hidden, {});  // addresses from messages the user removed   // addresses found elsewhere (e.g. in text messages), kept apart from the phone's contacts
 let geo = store.get(K.geo, {});
 let pins = store.get(K.pins, {});
 let entries = [];
 let byId = new Map();
 let tab = 'map';
 let query = '';
-let view = contacts.length ? 'list' : 'welcome';
+let view = (contacts.length || extra.length) ? 'list' : 'welcome';
 let selectedId = null;
 let me = null;
 let placing = null;
 
 function saveAll(){
-  const ok = store.set(K.contacts, contacts) && store.set(K.geo, geo) && store.set(K.pins, pins);
+  const ok = store.set(K.contacts, contacts) && store.set(K.extra, extra) && store.set(K.hidden, hidden) && store.set(K.geo, geo) && store.set(K.pins, pins);
   if (!ok) toast('Telefon nije dozvolio čuvanje podataka. Proverite da Safari nije u privatnom režimu.');
 }
 
+const phoneKey = v => { const d = String(v || '').replace(/\D/g, ''); return d.length >= 8 ? d.slice(-9) : ''; };
+function addrEntry(id, c, a, x){
+  const key = a.street1 ? 'a:' + a.key : 'p:' + c.id + '|' + a.key;
+  const p = pins[key], g = geo[a.key];
+  let status, lat, lng;
+  if (p){ status = 'manual'; lat = p.lat; lng = p.lng; }
+  else if (x && x.geo){ status = 'exact'; lat = x.geo.lat; lng = x.geo.lng; }
+  else if (!g) status = 'pending';
+  else if (g.q === 'none') status = 'none';
+  else { status = g.q; lat = g.lat; lng = g.lng; }
+  return { id, c, adr: a, key, lat, lng, status, x };
+}
+const hideKey = (x, a) => x.id + '|' + (a ? a.key : '');
 function buildEntries(){
   entries = [];
+  const byPhone = new Map();
+  for (const c of contacts) for (const t of c.tels) { const k = phoneKey(t.v); if (k && !byPhone.has(k)) byPhone.set(k, c); }
+  const fromMsgs = new Map(); // phone contact id -> addresses found in messages for that person
+  for (const x of extra){
+    const owner = x.tels.map(t => byPhone.get(phoneKey(t.v))).find(Boolean);
+    if (owner){ if (!fromMsgs.has(owner.id)) fromMsgs.set(owner.id, []); fromMsgs.get(owner.id).push(x); }
+    else {
+      // nobody in the phone's contacts has this number: show the person as found in the message
+      if (!x.adrs.length){
+        if (hidden[hideKey(x, null)]) continue;
+        const key = 'n:' + x.id, p = pins[key], pos = p || x.geo;
+        entries.push({ id: 'x:' + x.id, c: x, adr: null, key, lat: pos && pos.lat, lng: pos && pos.lng, status: p ? 'manual' : pos ? 'exact' : 'noaddr', x });
+      } else x.adrs.forEach((a, i) => { if (!hidden[hideKey(x, a)]) entries.push(addrEntry('x:' + x.id + '#' + i, x, a, x)); });
+    }
+  }
   for (const c of contacts){
-    if (!c.adrs.length){
+    const found = fromMsgs.get(c.id) || [];
+    const own = new Set(c.adrs.map(a => a.key));
+    const more = [];
+    for (const x of found) for (const a of x.adrs) if (!own.has(a.key) && !hidden[hideKey(x, a)]){ own.add(a.key); more.push([a, x]); }
+    if (!c.adrs.length && !more.length){
       const key = 'n:' + c.id, p = pins[key];
-      entries.push({ id: c.id, c, adr: null, key, lat: p && p.lat, lng: p && p.lng, status: p ? 'manual' : 'noaddr' });
+      const x = found[0];
+      const pos = p || (x && x.geo);
+      entries.push({ id: c.id, c, adr: null, key, lat: pos && pos.lat, lng: pos && pos.lng, status: p ? 'manual' : pos ? 'exact' : 'noaddr', x });
       continue;
     }
-    c.adrs.forEach((a, i) => {
-      const key = a.street1 ? 'a:' + a.key : 'p:' + c.id + '|' + a.key;
-      const p = pins[key], g = geo[a.key];
-      let status, lat, lng;
-      if (p){ status = 'manual'; lat = p.lat; lng = p.lng; }
-      else if (!g) status = 'pending';
-      else if (g.q === 'none') status = 'none';
-      else { status = g.q; lat = g.lat; lng = g.lng; }
-      entries.push({ id: c.id + '#' + i, c, adr: a, key, lat, lng, status });
-    });
+    c.adrs.forEach((a, i) => entries.push(addrEntry(c.id + '#' + i, c, a, null)));
+    more.forEach(([a, x], i) => entries.push(addrEntry(c.id + '#m' + i, c, a, x)));
   }
   for (const e of entries){
-    e.hay = norm([e.c.name, e.c.org, e.adr && e.adr.street, e.adr && e.adr.city, e.adr && e.adr.zip, e.adr && e.adr.region].filter(Boolean).join(' '));
+    e.hay = norm([e.c.name, e.c.org, e.adr && e.adr.street, e.adr && e.adr.city, e.adr && e.adr.zip, e.adr && e.adr.region, e.x && e.x.note, e.x && e.x !== e.c && e.x.name].filter(Boolean).join(' '));
     e.hasPos = typeof e.lat === 'number' && typeof e.lng === 'number';
   }
   byId = new Map(entries.map(e => [e.id, e]));
@@ -537,6 +579,7 @@ function fmtKm(d){
 }
 function adrLine(a){ if (!a) return ''; return [a.street, [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || a.region || a.country; }
 function telHref(v){ return 'tel:' + v.replace(/[^\d+]/g, ''); }
+function telText(v){ const d = v.replace(/\s+/g, ''); return /^\+33\d{9}$/.test(d) ? '+33 ' + d.slice(3, 4) + ' ' + d.slice(4).replace(/(\d\d)(?=\d)/g, '$1 ') : v; }
 
 function render(){
   const body = $('#sheetBody');
@@ -554,18 +597,19 @@ function renderListKeepScroll(){
 
 function listHTML(){
   const vis = visibleEntries();
-  const groups = { map: vis.filter(e => e.hasPos), check: vis.filter(isCheck), noaddr: vis.filter(e => e.status === 'noaddr') };
+  const groups = { map: vis.filter(e => e.hasPos || e.status === 'pending'), check: vis.filter(isCheck), noaddr: vis.filter(e => e.status === 'noaddr') };
   let items = groups[tab];
   const byName = (a, b) => a.c.name.localeCompare(b.c.name, 'sr');
-  if (me && tab === 'map') items = items.slice().sort((a, b) => km(a) - km(b) || byName(a, b));
+  if (me && tab === 'map') items = items.slice().sort((a, b) => (km(a) ?? 1e9) - (km(b) ?? 1e9) || byName(a, b));
   else items = items.slice().sort(byName);
   const tabBtn = (k, label) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${label} <span class="n">${groups[k].length}</span></button>`;
   let rows = items.map(e => {
-    const sub = e.adr ? adrLine(e.adr) : (e.c.tels[0] ? e.c.tels[0].v : 'Nema adrese');
+    const sub = e.adr ? adrLine(e.adr) : (e.c.tels[0] ? telText(e.c.tels[0].v) : 'Nema adrese');
     const warn = isCheck(e) ? '<i class="warn-dot" aria-hidden="true"></i>' : '';
-    const lbl = e.c.adrs.length > 1 && e.adr && e.adr.label ? ' (' + esc(e.adr.label) + ')' : '';
-    return `<li><button class="row" data-id="${esc(e.id)}"><span class="row-main"><span class="name">${esc(e.c.name)}${lbl}</span>` +
-      `<span class="sub">${warn}${esc(sub)}</span></span><span class="row-meta">${tab === 'map' ? fmtKm(km(e)) : ''}</span></button></li>`;
+    const lbl = e.c.adrs.length > 1 && e.adr && e.adr.label && !e.x ? ' (' + esc(e.adr.label) + ')' : '';
+    const tag = e.x ? '<span class="tag">iz poruke</span>' : '';
+    return `<li><button class="row" data-id="${esc(e.id)}"><span class="row-main"><span class="name">${esc(e.c.name)}${lbl}${tag}</span>` +
+      `<span class="sub">${warn}${esc(sub)}</span></span><span class="row-meta">${tab === 'map' ? (e.status === 'pending' ? '<span class="small">traži se</span>' : fmtKm(km(e))) : ''}</span></button></li>`;
   }).join('');
   if (!items.length){
     const msg = query ? 'Nema rezultata za ovu pretragu.'
@@ -587,8 +631,11 @@ function detailHTML(e){
     none: ['', 'Ova adresa nije pronađena na mapi. Postavite tačku sami ako znate gde je kuća.'],
     manual: ['calm', 'Tačku ste sami postavili.'],
     pending: ['calm', 'Adresa se još traži na mapi.'],
-    noaddr: ['calm', 'Kontakt nema adresu.']
+    noaddr: ['calm', e.x && e.x.url ? 'Adresa nije napisana, ali je poslata lokacija na mapi. Otvorite je i postavite tačku.' : 'Kontakt nema adresu.']
   }[e.status];
+  const x = e.x;
+  const msg = x && x.note ? `<p class="d-msg"><small>Iz poruke${x !== c && x.name && x.name !== c.name ? ' (' + esc(x.name) + ')' : ''}</small>${esc(x.note)}</p>` : '';
+  const tels = c.tels.length ? c.tels : [];
   const first = c.tels.find(t => /mob|iphone/i.test(t.label)) || c.tels[0];
   const navHref = e.hasPos ? `https://maps.apple.com/?daddr=${e.lat},${e.lng}&dirflg=d` : '';
   const gHref = e.hasPos ? `https://www.google.com/maps/dir/?api=1&destination=${e.lat},${e.lng}` : '';
@@ -596,25 +643,29 @@ function detailHTML(e){
     <button class="back" data-act="back">${ICON.back}Spisak</button>
     <h2 class="d-name">${esc(c.name)}</h2>
     ${c.org ? `<p class="d-org">${esc(c.org)}</p>` : ''}
-    ${a ? `<p class="d-adr">${a.label ? `<small>${esc(a.label)}</small>` : ''}${esc(a.street)}${a.street ? '<br>' : ''}${esc([a.zip, a.city].filter(Boolean).join(' '))}${a.country ? '<br>' + esc(a.country) : ''}</p>` : ''}
+    ${a ? `<p class="d-adr">${a.label || x ? `<small>${esc(x ? 'Adresa iz poruke' : a.label)}</small>` : ''}${esc(a.street)}${a.street ? '<br>' : ''}${esc([a.zip, a.city].filter(Boolean).join(' '))}${a.country ? '<br>' + esc(a.country) : ''}</p>` : ''}
     ${notes ? `<p class="note ${notes[0]}">${notes[1]}</p>` : ''}
+    ${msg}
     <div class="actions">
       ${first ? `<a class="btn" href="${telHref(first.v)}">${ICON.phone}Pozovi</a>` : `<span class="btn" aria-disabled="true">${ICON.phone}Nema broja</span>`}
       ${e.hasPos ? `<a class="btn primary" href="${navHref}">${ICON.nav}Navigacija</a>` : `<button class="btn primary" data-act="place">Postavi na mapu</button>`}
     </div>
-    ${c.tels.length ? `<ul class="phones">${c.tels.map(t => `<li><a href="${telHref(t.v)}">${esc(t.v)}<span>${esc(t.label)}</span></a></li>`).join('')}</ul>` : ''}
+    ${c.tels.length ? `<ul class="phones">${c.tels.map(t => `<li><a href="${telHref(t.v)}">${esc(telText(t.v))}<span>${esc(t.label)}</span></a></li>`).join('')}</ul>` : ''}
     <div class="links">
       ${e.hasPos ? `<button data-act="place">Pomeri tačku</button>` : ''}
       ${e.status === 'manual' && a ? `<button data-act="unplace">Vrati tačku sa adrese</button>` : ''}
       ${gHref ? `<a href="${gHref}">Otvori u Google mapama</a>` : ''}
+      ${x && x.url ? `<a href="${esc(x.url)}">Lokacija poslata u poruci</a>` : ''}
+      ${x && (a || x === c) ? `<button data-act="hide">Ukloni ovu adresu iz poruke</button>` : ''}
     </div>
+    ${c.emails && c.emails.length ? `<p class="small" style="margin-top:12px">${c.emails.map(esc).join('<br>')}</p>` : ''}
   </div></div>`;
 }
 
 function welcomeHTML(){
   const standalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
   return `<div class="sheet-scroll"><div class="welcome">
-    ${contacts.length ? `<button class="back" data-act="back">${ICON.back}Spisak</button>` : ''}
+    ${contacts.length || extra.length ? `<button class="back" data-act="back">${ICON.back}Spisak</button>` : ''}
     <h1>Kontakti na mapi</h1>
     <p>Aplikacija čita adrese iz vaših kontakata i pokazuje na mapi gde ko živi. Prvo izvezite kontakte iz iPhone-a u fajl:</p>
     <ol class="steps">
@@ -654,6 +705,12 @@ $('#sheetBody').addEventListener('click', ev => {
   if (act === 'back'){ if (view === 'welcome') view = 'list'; deselect(); }
   else if (act === 'import') $('#file').click();
   else if (act === 'place') startPlacing(byId.get(selectedId));
+  else if (act === 'hide'){
+    const e = byId.get(selectedId); if (!e || !e.x) return;
+    hidden[hideKey(e.x, e.adr)] = true; saveAll();
+    selectedId = null; view = 'list'; refresh();
+    toast('Adresa je uklonjena sa mape.');
+  }
   else if (act === 'unplace'){ const e = byId.get(selectedId); delete pins[e.key]; saveAll(); refresh(); runGeocoder(); }
 });
 
@@ -710,10 +767,12 @@ $('#locBtn').addEventListener('click', () => locate(true));
 const menu = $('#menu');
 $('#menuBtn').addEventListener('click', () => {
   const onMap = entries.filter(e => e.hasPos).length, chk = entries.filter(isCheck).length, no = entries.filter(e => e.status === 'noaddr').length;
-  $('#menuStats').textContent = contacts.length
-    ? `${contacts.length} ${pl(contacts.length, 'kontakt', 'kontakta', 'kontakata')}: ${onMap} na mapi, ${chk} za proveru, ${no} bez adrese.`
+  const fromMsgs = entries.filter(e => e.x).length;
+  $('#menuStats').textContent = (contacts.length || extra.length)
+    ? `${contacts.length} ${pl(contacts.length, 'kontakt', 'kontakta', 'kontakata')}: ${onMap} na mapi, ${chk} za proveru, ${no} bez adrese.` +
+      (fromMsgs ? ` Adresa iz poruka: ${fromMsgs}.` : '')
     : 'Kontakti još nisu učitani.';
-  $('#backupBtn').hidden = $('#wipeBtn').hidden = !contacts.length;
+  $('#backupBtn').hidden = $('#wipeBtn').hidden = !(contacts.length || extra.length);
   menu.showModal();
 });
 menu.addEventListener('click', ev => {
@@ -739,23 +798,29 @@ $('#file').addEventListener('change', async ev => {
   if (!/BEGIN:VCARD/i.test(text)){ toast('Ovo nije fajl sa kontaktima. Izaberite fajl koji se završava na .vcf.'); return; }
   const list = parseVCards(text);
   if (!list.length){ toast('U ovom fajlu nema kontakata.'); return; }
-  contacts = list; saveAll();
+  const isExtra = list.some(c => c.src);
+  // a file of addresses found in messages is added next to the phone's contacts; a contacts export replaces the old export
+  if (isExtra) extra = list; else contacts = list;
+  saveAll();
   view = 'list'; tab = 'map'; selectedId = null; autoFit = true;
   refresh(); setSheet('half'); fitAll();
   const withAdr = list.filter(c => c.adrs.length).length;
-  toast(`Učitano: ${list.length} ${pl(list.length, 'kontakt', 'kontakta', 'kontakata')}, od toga ${withAdr} sa adresom.`);
+  toast(isExtra
+    ? `Dodato iz poruka: ${list.length} ${pl(list.length, 'osoba', 'osobe', 'osoba')}. Vaši kontakti su ostali isti.`
+    : `Učitano: ${list.length} ${pl(list.length, 'kontakt', 'kontakta', 'kontakata')}, od toga ${withAdr} sa adresom.`);
   runGeocoder();
 });
 function restore(text){
   let d; try { d = JSON.parse(text); } catch { toast('Rezervna kopija je oštećena.'); return; }
   if (!d || d.app !== 'mapa-kontakata' || !Array.isArray(d.contacts)){ toast('Ovo nije rezervna kopija ove aplikacije.'); return; }
-  contacts = d.contacts; geo = Object.assign(geo, d.geo || {}); pins = Object.assign(pins, d.pins || {});
+  contacts = d.contacts; extra = Array.isArray(d.extra) ? d.extra : extra; hidden = d.hidden || hidden;
+  geo = Object.assign(geo, d.geo || {}); pins = Object.assign(pins, d.pins || {});
   saveAll(); view = 'list'; tab = 'map'; autoFit = true; refresh(); setSheet('half'); fitAll();
   toast('Rezervna kopija je vraćena.');
   runGeocoder();
 }
 async function backup(){
-  const data = JSON.stringify({ app: 'mapa-kontakata', v: 1, savedAt: new Date().toISOString(), contacts, geo, pins });
+  const data = JSON.stringify({ app: 'mapa-kontakata', v: 1, savedAt: new Date().toISOString(), contacts, extra, hidden, geo, pins });
   const name = 'mapa-kontakata-' + new Date().toISOString().slice(0, 10) + '.json';
   const file = new File([data], name, { type: 'application/json' });
   try {
@@ -768,7 +833,7 @@ async function backup(){
 function wipe(){
   if (!confirm('Obrisati sve kontakte i tačke sa ovog telefona? Kontakti u iPhone-u ostaju netaknuti.')) return;
   Object.values(K).forEach(k => store.del(k));
-  contacts = []; geo = {}; pins = {}; me = null; selectedId = null; view = 'welcome';
+  contacts = []; extra = []; hidden = {}; geo = {}; pins = {}; me = null; selectedId = null; view = 'welcome';
   if (meMarker){ map.removeLayer(meMarker); meMarker = null; }
   refresh(); setSheet('full');
   toast('Podaci su obrisani.');
@@ -902,11 +967,11 @@ async function runGeocoder(){
   geoRunning = false; releaseScreen();
   buildEntries(); drawMarkers(); renderListKeepScroll();
   if (autoFit) fitAll();
+  // contacts may have been imported meanwhile: keep going before announcing anything
+  if (pendingAddresses().length){ runGeocoder(); return; }
   const chk = entries.filter(isCheck).length;
   $('#progress').hidden = true;
   toast(chk ? `Gotovo. ${chk} ${pl(chk, 'adresu', 'adrese', 'adresa')} treba proveriti.` : 'Gotovo. Sve adrese su na mapi.');
-  // contacts may have been re-imported meanwhile
-  if (pendingAddresses().length) runGeocoder();
 }
 
 /* ---------- misc ---------- */
@@ -919,8 +984,8 @@ function refresh(){ buildEntries(); drawMarkers(); render(); }
 
 /* ---------- start ---------- */
 refresh();
-setSheet(contacts.length ? 'peek' : 'full');
-if (contacts.length) fitAll();
+setSheet(contacts.length || extra.length ? 'peek' : 'full');
+if (contacts.length || extra.length) fitAll();
 if (store.get(K.loc, false)) locate(false);
 autoFit = entries.some(e => e.status === 'pending');
 runGeocoder();
