@@ -169,6 +169,15 @@ dialog h2{margin:0 0 4px;font:700 24px/1.2 var(--serif);color:var(--lapis)}
   transition:opacity .2s,transform .2s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+@media (min-width:700px){
+  .sheet{left:12px;right:auto;width:420px}
+  .topbar{right:auto;width:444px}
+  .fab{bottom:24px}
+  .progress{right:auto;left:446px;width:320px;bottom:24px}
+  .placing{right:auto;width:420px}
+  .leaflet-bottom{bottom:0}
+  html.sheet-tall .fab,html.sheet-tall .progress{opacity:1;pointer-events:auto}
+}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -434,14 +443,18 @@ function drawMarkers(){
 function fitAll(list){
   const pts = (list || visibleEntries()).filter(e => e.hasPos).map(e => [e.lat, e.lng]);
   if (!pts.length) return;
-  map.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [30, 80], paddingBottomRight: [30, sheetVisible() + 20], maxZoom: 15 });
+  const wide = window.innerWidth >= 700;
+  map.fitBounds(L.latLngBounds(pts), wide
+    ? { paddingTopLeft: [460, 40], paddingBottomRight: [40, 40], maxZoom: 15 }
+    : { paddingTopLeft: [30, 80], paddingBottomRight: [30, sheetVisible() + 20], maxZoom: 15 });
 }
 function focusEntry(e){
   // put the pin in the middle of the part of the map that is not covered by the sheet
   autoFit = false;
   const z = Math.max(map.getZoom(), 17);
-  const offset = Math.max(0, (sheetVisible() - 70) / 2);
-  const p = map.project([e.lat, e.lng], z).add([0, offset]);
+  const wide = window.innerWidth >= 700;
+  const offset = wide ? 0 : Math.max(0, (sheetVisible() - 70) / 2);
+  const p = map.project([e.lat, e.lng], z).add([wide ? -220 : 0, offset]);
   const m = markers.get(e.id);
   if (m) map.once('moveend', () => {
     // people living at the same address sit in one cluster: fan them out
@@ -780,16 +793,41 @@ function stripHouseNumber(s){
   if (t === s) t = s.replace(/[\s,]+\d+\s*[a-zA-Z]?\s*$/, '');
   return t.trim();
 }
-async function nominatim(params){
+async function nominatim(params, limit = 1){
   const wait = lastReq + 1100 - Date.now(); if (wait > 0) await sleep(wait);
   lastReq = Date.now();
-  const sp = new URLSearchParams({ format: 'jsonv2', limit: '1' });
+  const sp = new URLSearchParams({ format: 'jsonv2', limit: String(limit) });
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const r = await fetch('https://nominatim.openstreetmap.org/search?' + sp.toString());
   if (r.status === 429 || r.status >= 500) throw new Error('busy');
-  if (!r.ok) return null;
+  if (!r.ok) return [];
   const j = await r.json();
-  return (Array.isArray(j) && j[0]) || null;
+  return Array.isArray(j) ? j : [];
+}
+// how precise a result is: a house, only the street, or only the town
+const QORDER = { exact: 0, street: 1, city: 2 };
+const rankQ = r => r.place_rank >= 28 ? 'exact' : r.place_rank >= 25 ? 'street' : 'city';
+function dist2(a, b){ const dx = (a.lng - b.lng) * Math.cos(a.lat * Math.PI / 180), dy = a.lat - b.lat; return dx * dx + dy * dy; }
+async function cityCenter(a, city){
+  const key = 'c:' + norm([city, a.country || a.cc].join('|'));
+  if (!geo[key]){
+    const hit = (await nominatim({ city, country: a.country, countrycodes: a.cc }))[0];
+    geo[key] = hit ? { q: 'center', lat: +hit.lat, lng: +hit.lon } : { q: 'none' };
+  }
+  return geo[key].q === 'none' ? null : geo[key];
+}
+// The same street name often exists in several parts of one city (Beograd, Grocka, Mladenovac...).
+// Prefer the most precise match, and among equals the one nearest to the town centre.
+async function pick(list, a, city){
+  if (!list.length) return null;
+  let c = list.map(r => ({ q: rankQ(r), lat: +r.lat, lng: +r.lon }));
+  const top = Math.min(...c.map(x => QORDER[x.q]));
+  c = c.filter(x => QORDER[x.q] === top);
+  if (c.length > 1 && city){
+    const ctr = await cityCenter(a, city);
+    if (ctr) c.sort((x, y) => dist2(x, ctr) - dist2(y, ctr));
+  }
+  return c[0];
 }
 async function geocodeAddress(a){
   const cc = a.cc ? { countrycodes: a.cc } : {};
@@ -797,25 +835,30 @@ async function geocodeAddress(a){
   const street = cleanStreet(a.street1);
   const bare = street ? stripHouseNumber(street) : '';
   const place = [a.zip, city].filter(Boolean).join(' ');
-  const tries = [];
+  const tries = []; // [best quality this try can give, query, how many results, run only if nothing found yet]
   if (street && city){
-    tries.push(['exact', { street, city, postalcode: a.zip, country: a.country, ...cc }]);
-    tries.push(['exact', { q: [street, place, a.country].filter(Boolean).join(', '), ...cc }]);
-    if (bare && bare !== street) tries.push(['street', { street: bare, city, country: a.country, ...cc }]);
+    tries.push(['exact', { street, city, postalcode: a.zip, country: a.country, ...cc }, 5]);
+    if (a.zip) tries.push(['exact', { street, city, country: a.country, ...cc }, 5, true]);
+    tries.push(['exact', { q: [street, place, a.country].filter(Boolean).join(', '), ...cc }, 5]);
+    if (bare && bare !== street) tries.push(['street', { street: bare, city, country: a.country, ...cc }, 5]);
   } else if (street){
-    tries.push(['city', { q: [street, a.zip, a.country].filter(Boolean).join(', '), ...cc }]);
+    tries.push(['city', { q: [street, a.zip, a.country].filter(Boolean).join(', '), ...cc }, 1]);
   }
   if (city){
-    tries.push(['city', { city, postalcode: a.zip, country: a.country, ...cc }]);
-    tries.push(['city', { q: [city, a.country].filter(Boolean).join(', '), ...cc }]);
+    tries.push(['city', { city, postalcode: a.zip, country: a.country, ...cc }, 1]);
+    tries.push(['city', { q: [city, a.country].filter(Boolean).join(', '), ...cc }, 1]);
   } else if (a.zip){
-    tries.push(['city', { postalcode: a.zip, country: a.country, ...cc }]);
+    tries.push(['city', { postalcode: a.zip, country: a.country, ...cc }, 1]);
   }
-  for (const [q, params] of tries){
-    const hit = await nominatim(params);
-    if (hit) return { q, lat: +(+hit.lat).toFixed(6), lng: +(+hit.lon).toFixed(6) };
+  let best = null;
+  for (const [cap, params, limit, onlyIfEmpty] of tries){
+    if (best && (onlyIfEmpty || QORDER[best.q] <= QORDER[cap])) continue;
+    const hit = await pick(await nominatim(params, limit), a, city);
+    if (!hit) continue;
+    if (QORDER[hit.q] < QORDER[cap]) hit.q = cap;
+    if (!best || QORDER[hit.q] < QORDER[best.q]) best = hit;
   }
-  return { q: 'none' };
+  return best ? { q: best.q, lat: +best.lat.toFixed(6), lng: +best.lng.toFixed(6) } : { q: 'none' };
 }
 function pendingAddresses(){
   const seen = new Set(), out = [];
