@@ -220,7 +220,7 @@ dialog h2{margin:0 0 4px;font:700 24px/1.2 var(--serif);color:var(--lapis)}
     <button class="btn" data-act="close">Zatvori</button>
   </div>
   <p class="credits">Kontakti se čuvaju samo na ovom telefonu. Da bi se adresa našla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona.<br><br>
-  Mapa: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> saradnici, © <a href="https://carto.com/attributions">CARTO</a>. Pretraga adresa: <a href="https://nominatim.org">Nominatim</a>.</p>
+  Mapa: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> saradnici. Pretraga adresa: <a href="https://nominatim.org">Nominatim</a>.</p>
 </dialog>
 
 <input type="file" id="file" hidden accept=".vcf,.vcard,.json,text/vcard,text/x-vcard,text/directory,application/json">
@@ -412,9 +412,9 @@ function visibleEntries(){ return query ? entries.filter(e => e.hay.includes(que
 /* ---------- map ---------- */
 const map = L.map('map', { zoomControl: false, attributionControl: true, tap: false }).setView([45.5, 14], 5);
 map.attributionControl.setPrefix(false);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  maxZoom: 19, subdomains: 'abcd',
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 }).addTo(map);
 
 const cluster = L.markerClusterGroup({
