@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -13,173 +15,221 @@
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <title>Mapa kontakata</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
 <style>
+/* iOS 27 look: system font, system colors, Liquid Glass surfaces, light and dark mode */
 :root{
-  --lapis:#1E3A5F;
-  --lapis-deep:#13263F;
-  --gold:#C8962E;
-  --gold-light:#F1D58A;
-  --cinnabar:#B03A2A;
-  --ink:#1B2230;
-  --muted:#5B6474;
-  --mist:#E8EBF0;
-  --paper:#FFFFFF;
-  --wash:#F3F5F8;
-  --sv:140px;               /* visible height of the bottom sheet, set by script */
-  --safe-b:env(safe-area-inset-bottom, 0px);
-  --safe-t:env(safe-area-inset-top, 0px);
-  --sans:"Alegreya Sans", -apple-system, system-ui, sans-serif;
-  --serif:"Alegreya", Georgia, serif;
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --label:#000; --label2:rgba(60,60,67,.6); --label3:rgba(60,60,67,.3); --sep:rgba(60,60,67,.22);
+  --blue:#007AFF; --red:#FF3B30; --orange:#FF9500; --green:#34C759; --indigo:#5856D6; --gray:#8E8E93;
+  --fill:rgba(118,118,128,.12); --fill2:rgba(118,118,128,.2);
+  --card:rgba(255,255,255,.78);
+  --glass:rgba(252,252,254,.6); --glass-thick:rgba(246,246,249,.84);
+  --stroke:rgba(255,255,255,.75); --hi:rgba(255,255,255,.9); --sheen:rgba(255,255,255,.45);
+  --shadow:0 14px 36px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.06);
+  --map-bg:#e9e6df; --tiles:saturate(.8) contrast(.97) brightness(1.02);
+  --ease:cubic-bezier(.32,.72,0,1);
+  --sv:120px;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --label:#fff; --label2:rgba(235,235,245,.6); --label3:rgba(235,235,245,.3); --sep:rgba(84,84,88,.55);
+    --blue:#0A84FF; --red:#FF453A; --orange:#FF9F0A; --green:#30D158; --indigo:#5E5CE6;
+    --fill:rgba(118,118,128,.24); --fill2:rgba(118,118,128,.36);
+    --card:rgba(255,255,255,.075);
+    --glass:rgba(36,36,40,.55); --glass-thick:rgba(28,28,31,.82);
+    --stroke:rgba(255,255,255,.13); --hi:rgba(255,255,255,.16); --sheen:rgba(255,255,255,.07);
+    --shadow:0 14px 36px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.3);
+    --map-bg:#1d1d1f; --tiles:invert(1) hue-rotate(180deg) brightness(.92) contrast(.86) saturate(.55);
+  }
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:var(--wash);color:var(--ink);font:400 17px/1.4 var(--sans);-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
-button,input{font:inherit;color:inherit}
-button{cursor:pointer}
-:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--map-bg);color:var(--label);
+  font:400 17px/1.29 var(--font);letter-spacing:-.41px;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer;-webkit-user-select:none;user-select:none}
+a{color:var(--blue);text-decoration:none}
+:focus-visible{outline:3px solid color-mix(in srgb,var(--blue) 55%,transparent);outline-offset:2px}
 [hidden]{display:none!important}
+svg{display:block}
+.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.i.fill{fill:currentColor;stroke:none}
+
+/* Liquid Glass */
+.glass,.glass-thick{position:relative;-webkit-backdrop-filter:blur(22px) saturate(185%);backdrop-filter:blur(22px) saturate(185%);
+  border:.5px solid var(--stroke);box-shadow:inset 0 .5px 0 var(--hi),var(--shadow)}
+.glass{background:var(--glass)}
+.glass-thick{background:var(--glass-thick);-webkit-backdrop-filter:blur(34px) saturate(190%);backdrop-filter:blur(34px) saturate(190%)}
+.glass::before,.glass-thick::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(170deg,var(--sheen),transparent 38%)}
+@media (prefers-reduced-transparency:reduce){
+  .glass{background:var(--glass-thick)} .glass,.glass-thick{-webkit-backdrop-filter:none;backdrop-filter:none}
+}
 
 /* Map */
-#map{position:fixed;inset:0;background:#E9ECEF}
-.leaflet-container{font-family:var(--sans)}
-.leaflet-bottom{bottom:var(--sv);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
-.leaflet-control-attribution{font-size:11px;background:rgba(255,255,255,.8)!important}
+#map{position:fixed;inset:0;background:var(--map-bg)}
+.leaflet-container{font-family:var(--font);background:var(--map-bg)}
+.leaflet-tile-pane{filter:var(--tiles)}
+.leaflet-bottom{bottom:calc(var(--sv) + 14px);transition:bottom .38s var(--ease)}
+.leaflet-control-attribution{margin:0 12px 0 0!important;padding:1px 7px!important;border-radius:8px;font-size:10px;
+  background:var(--glass)!important;color:var(--label2)!important;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.leaflet-control-attribution a{color:var(--label2)!important}
 
-/* Top bar */
-.topbar{position:fixed;left:0;right:0;top:0;z-index:1100;display:flex;gap:10px;align-items:center;
-  padding:calc(var(--safe-t) + 10px) 12px 10px;pointer-events:none}
-.topbar>*{pointer-events:auto}
-.icon-btn{flex:none;width:48px;height:48px;border-radius:50%;border:0;background:var(--paper);display:grid;place-items:center;
-  box-shadow:0 2px 10px rgba(19,38,63,.18)}
-.icon-btn svg{width:22px;height:22px;stroke:var(--lapis);stroke-width:2;fill:none;stroke-linecap:round}
-.search{flex:1;display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 16px;border-radius:24px;background:var(--paper);
-  box-shadow:0 2px 10px rgba(19,38,63,.18)}
-.search svg{flex:none;width:19px;height:19px;stroke:var(--muted);stroke-width:2;fill:none;stroke-linecap:round}
-.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;height:100%;-webkit-appearance:none;appearance:none}
-.search input::-webkit-search-cancel-button{display:none}
-.search input::placeholder{color:#8A93A3}
-.clear{flex:none;width:36px;height:36px;border:0;border-radius:50%;background:var(--wash);font-size:20px;line-height:1;color:var(--muted)}
+/* Floating map controls (top right) */
+.controls{position:fixed;top:calc(var(--safe-t) + 12px);right:12px;z-index:1050;display:flex;flex-direction:column;
+  width:48px;border-radius:24px;transition:opacity .25s}
+.controls button{width:48px;height:48px;border:0;background:none;display:grid;place-items:center;color:var(--label)}
+.controls .i{width:21px;height:21px}
+.controls .sep{height:.5px;margin:0 10px;background:var(--sep)}
+#locBtn.on{color:var(--blue)}
+html.sheet-tall .controls,html.sheet-tall .hud{opacity:0;pointer-events:none}
 
-/* Placement banner */
-.placing{position:fixed;left:12px;right:12px;top:calc(var(--safe-t) + 68px);z-index:1100;display:flex;align-items:center;gap:12px;
-  padding:12px 12px 12px 16px;border-radius:14px;background:var(--lapis);color:#fff;box-shadow:0 6px 20px rgba(19,38,63,.3)}
-.placing p{margin:0;flex:1;font-size:16px;line-height:1.3}
-.placing button{flex:none;border:0;border-radius:10px;padding:9px 14px;background:rgba(255,255,255,.16);color:#fff;font-weight:500}
+/* HUD: geocoding progress */
+.hud{position:fixed;top:calc(var(--safe-t) + 12px);left:12px;right:72px;z-index:1050;display:grid;grid-template-columns:auto 1fr;
+  align-items:center;gap:4px 10px;padding:10px 14px 11px;border-radius:22px;font-size:15px;line-height:1.25;letter-spacing:-.24px;transition:opacity .25s}
+.hud .bar{grid-column:1/-1;height:3px;border-radius:2px;background:var(--fill2);overflow:hidden}
+.hud .bar i{display:block;height:100%;width:0;background:var(--blue);border-radius:2px;transition:width .5s var(--ease)}
+.spinner{width:16px;height:16px;border-radius:50%;border:2px solid var(--fill2);border-top-color:var(--label2);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 
-/* Floating controls above the sheet */
-.fab{position:fixed;right:14px;bottom:calc(var(--sv) + 14px);z-index:1050;width:50px;height:50px;border-radius:50%;border:0;background:var(--paper);
-  display:grid;place-items:center;box-shadow:0 2px 10px rgba(19,38,63,.22);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
-.fab svg{width:24px;height:24px;stroke:var(--lapis);stroke-width:2;fill:none}
-.fab.on svg{stroke:#2F7DE1}
-.progress{position:fixed;left:14px;right:78px;bottom:calc(var(--sv) + 18px);z-index:1050;display:flex;flex-direction:column;gap:6px;
-  padding:9px 14px 10px;border-radius:14px;background:var(--lapis);color:#fff;font-size:15px;line-height:1.25;
-  box-shadow:0 4px 14px rgba(19,38,63,.28);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
-.progress .bar{display:block;height:4px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden}
-.progress .bar i{display:block;height:100%;width:0;background:var(--gold-light);transition:width .4s}
+/* Placing banner */
+.placing{position:fixed;top:calc(var(--safe-t) + 12px);left:12px;right:72px;z-index:1100;display:flex;align-items:center;gap:12px;
+  padding:10px 10px 10px 16px;border-radius:24px}
+.placing p{margin:0;flex:1;font-size:15px;line-height:1.3;letter-spacing:-.24px}
+.placing button{flex:none;height:36px;padding:0 16px;border:0;border-radius:18px;background:var(--fill);color:var(--blue);font-weight:600;font-size:15px}
 
 /* Bottom sheet */
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1000;height:calc(100% - var(--safe-t) - 70px);display:flex;flex-direction:column;
-  background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -4px 22px rgba(19,38,63,.16);
-  transform:translateY(60%);transition:transform .28s cubic-bezier(.2,.8,.2,1);will-change:transform}
-html.dragging .sheet,html.dragging .fab,html.dragging .progress,html.dragging .leaflet-bottom{transition:none}
-html.sheet-tall .fab,html.sheet-tall .progress{opacity:0;pointer-events:none}
-.fab,.progress{transition:bottom .28s cubic-bezier(.2,.8,.2,1),opacity .2s}
-.grab{flex:none;padding:8px 0 4px;touch-action:none}
-.handle{display:block;width:40px;height:5px;margin:0 auto;border-radius:3px;background:#CDD2DA}
-.sheet-head{flex:none;padding:6px 16px 10px;touch-action:none}
-.sheet-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:calc(var(--safe-b) + 24px)}
+.sheet{position:fixed;left:8px;right:8px;bottom:8px;z-index:1000;height:calc(100% - var(--safe-t) - 18px);display:flex;flex-direction:column;
+  border-radius:36px;overflow:hidden;transform:translateY(60%);transition:transform .42s var(--ease);will-change:transform}
+html.dragging .sheet,html.dragging .leaflet-bottom{transition:none}
+.grab{flex:none;height:18px;display:grid;place-items:center;touch-action:none}
+.handle{width:36px;height:5px;border-radius:3px;background:var(--label3)}
+.sheet-search{flex:none;display:flex;gap:10px;align-items:center;padding:2px 14px 12px;touch-action:none}
+.sheet:not(.mode-list) .sheet-search{display:none}
+.search{flex:1;min-width:0;display:flex;align-items:center;gap:7px;height:48px;padding:0 6px 0 14px;border-radius:24px;background:var(--fill)}
+.search .i{width:19px;height:19px;color:var(--label2);stroke-width:2.4}
+.search input{flex:1;min-width:0;width:100%;height:100%;border:0;outline:0;background:transparent;font-size:17px;-webkit-appearance:none;appearance:none}
+.search input::-webkit-search-cancel-button{display:none}
+.search input::placeholder{color:var(--label2)}
+.clear{flex:none;width:30px;height:30px;border:0;padding:0;background:none;color:var(--label3);display:grid;place-items:center}
+.clear .i{width:20px;height:20px}
+.round{flex:none;width:48px;height:48px;border:0;border-radius:50%;background:var(--fill);color:var(--label);display:grid;place-items:center}
+.round.sm{width:32px;height:32px}
+.round.sm .i{width:15px;height:15px;stroke-width:2.6;color:var(--label2)}
+.sheet-body{display:flex;flex-direction:column;flex:1;min-height:0}
+.sheet-head{flex:none;padding:0 14px 12px;touch-action:none}
+.sheet-head,.sheet-body .sheet-scroll{transition:opacity .2s}
+html.sheet-peek .sheet.mode-list .sheet-head,html.sheet-peek .sheet.mode-list .sheet-scroll{opacity:0}
+.sheet-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 0 calc(var(--safe-b) + 20px)}
 
-.tabs{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--wash)}
-.tabs button{flex:1;border:0;background:transparent;border-radius:9px;padding:8px 4px;font-size:15px;font-weight:500;color:var(--muted);white-space:nowrap}
-.tabs button[aria-selected="true"]{background:var(--paper);color:var(--lapis);box-shadow:0 1px 3px rgba(19,38,63,.14)}
-.tabs .n{font-weight:400;opacity:.75}
+/* Segmented control */
+.seg{display:flex;padding:3px;border-radius:999px;background:var(--fill)}
+.seg button{flex:1;height:34px;border:0;border-radius:999px;background:transparent;font-size:14px;font-weight:500;letter-spacing:-.15px;
+  color:var(--label);white-space:nowrap;transition:background .2s,box-shadow .2s}
+.seg button[aria-selected="true"]{background:var(--card-solid,#fff);font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.12),0 .5px 0 rgba(0,0,0,.04)}
+@media (prefers-color-scheme:dark){ .seg button[aria-selected="true"]{--card-solid:#636366} }
+.seg .n{color:var(--label2);font-weight:500;margin-left:3px}
 
-.list{list-style:none;margin:0;padding:0}
-.row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 18px;border:0;background:transparent;text-align:left;border-bottom:1px solid #EEF0F4}
-.row:active{background:var(--wash)}
+/* Inset grouped lists */
+.group{list-style:none;margin:0 14px 14px;padding:0;border-radius:24px;background:var(--card);overflow:hidden}
+.group > li{position:relative}
+.group > li + li::before{content:"";position:absolute;top:0;right:0;left:var(--inset,16px);height:.5px;background:var(--sep)}
+.sec{margin:6px 30px 7px;font-size:15px;font-weight:600;letter-spacing:-.24px;color:var(--label2)}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 16px;border:0;background:transparent;text-align:left;color:var(--label)}
+.row:active,.act:active{background:var(--fill)}
+.people{--inset:68px}
+.avatar{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:16px;font-weight:600;letter-spacing:0;
+  background:linear-gradient(180deg,#A9AFBB,#858A96)}
+.avatar.lg{width:56px;height:56px;font-size:22px}
+.avatar svg{width:60%;height:60%;fill:#fff}
 .row-main{flex:1;min-width:0}
-.name{display:block;font:500 19px/1.2 var(--serif);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sub{display:block;margin-top:2px;font-size:15px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sub .warn-dot{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;border:2px solid var(--cinnabar);vertical-align:1px}
-.row-meta{flex:none;font-size:15px;color:var(--lapis);font-weight:500}
-.tag{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:6px;background:#FBF5E6;color:#7A5A14;font:500 12px/1.5 var(--sans);vertical-align:3px}
-.d-msg{margin:12px 0 0;padding:10px 12px;border-left:3px solid var(--gold);background:#FBF8F0;border-radius:0 10px 10px 0;font-size:15px;color:var(--ink);white-space:pre-line}
-.d-msg small{display:block;margin-bottom:2px;color:var(--muted);font-size:13px}
-.empty{padding:28px 22px;color:var(--muted);font-size:16px;text-align:center}
-.hint{margin:14px 18px 0;font-size:15px;color:var(--muted)}
+.name{display:block;font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{display:block;margin-top:1px;font-size:15px;letter-spacing:-.24px;color:var(--label2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.warn{display:inline-grid;place-items:center;width:15px;height:15px;margin-right:5px;border-radius:50%;background:var(--orange);color:#fff;
+  font-size:11px;font-weight:700;line-height:1;vertical-align:-1px}
+.row-meta{flex:none;font-size:15px;letter-spacing:-.24px;color:var(--label2)}
+.tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:color-mix(in srgb,var(--orange) 16%,transparent);
+  color:var(--orange);font-size:12px;font-weight:600;letter-spacing:0;vertical-align:2px}
+.empty{padding:26px 24px;color:var(--label2);font-size:15px;text-align:center}
+.hint{margin:0 30px 10px;font-size:13px;letter-spacing:-.08px;color:var(--label2)}
 
-/* Detail */
-.detail{padding:4px 18px 0}
-.back{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px -6px;padding:6px 8px;border:0;background:transparent;color:var(--lapis);font-weight:500;font-size:16px}
-.back svg{width:18px;height:18px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
-.d-name{margin:0;font:700 27px/1.15 var(--serif);color:var(--ink)}
-.d-org{margin:4px 0 0;color:var(--muted)}
-.d-adr{margin:12px 0 0;font-size:17px}
-.d-adr small{display:block;font-size:14px;color:var(--muted)}
-.note{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#FBF1EE;color:#7A2A1F;font-size:15px}
-.note.calm{background:var(--wash);color:var(--muted)}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:10px 14px;border-radius:13px;border:1.5px solid var(--mist);
-  background:var(--paper);color:var(--lapis);font-weight:700;font-size:17px;text-decoration:none;text-align:center}
-.btn svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
-.btn.primary{background:var(--lapis);border-color:var(--lapis);color:#fff}
-.btn.wide{grid-column:1/-1}
-.btn.danger{color:var(--cinnabar)}
-.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
-.phones{list-style:none;margin:16px 0 0;padding:0;border-top:1px solid #EEF0F4}
-.phones a{display:flex;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid #EEF0F4;color:var(--ink);text-decoration:none;font-size:17px}
-.phones a span{color:var(--muted);font-size:15px}
-.links{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0}
-.links a,.links button{padding:6px 0;border:0;background:none;color:var(--lapis);font-size:16px;text-decoration:underline;text-underline-offset:3px}
+/* Place card */
+.card-head{display:flex;align-items:center;gap:12px;padding:2px 14px 14px 16px;touch-action:none}
+.card-head .t{flex:1;min-width:0}
+.card-head h2{margin:0;font-size:24px;line-height:1.15;font-weight:700;letter-spacing:.07px}
+.card-head p{margin:2px 0 0;font-size:15px;letter-spacing:-.24px;color:var(--label2)}
+.tiles{display:flex;gap:8px;margin:0 14px 14px}
+.tile{flex:1;min-width:0;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:18px;
+  background:var(--card);color:var(--blue);font-size:13px;font-weight:600;letter-spacing:-.08px;text-align:center}
+.tile .i{width:22px;height:22px}
+.tile.primary{flex:1.6;background:var(--blue);color:#fff}
+.tile[aria-disabled="true"]{opacity:.4;pointer-events:none}
+.note{display:flex;gap:10px;align-items:flex-start;margin:0 14px 14px;padding:12px 14px;border-radius:18px;background:var(--card);font-size:15px;letter-spacing:-.24px}
+.note .dot{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700;background:var(--gray)}
+.note.warnc .dot{background:var(--orange)}
+.kv{display:block;padding:11px 16px 12px;color:var(--label)}
+.kv .k{display:block;font-size:13px;letter-spacing:-.08px;color:var(--label2)}
+.kv .v{display:block;font-size:17px;white-space:pre-line}
+a.kv .v{color:var(--blue)}
+.act{display:flex;align-items:center;gap:12px;width:100%;min-height:50px;padding:0 16px;border:0;background:transparent;text-align:left;color:var(--blue);font-size:17px}
+.act.destructive{color:var(--red)}
+.act .chev{margin-left:auto;width:9px;height:14px;color:var(--label3);stroke-width:2.4}
 
-/* Welcome / instructions */
-.welcome{padding:6px 22px 0}
-.welcome h1{margin:0 0 6px;font:700 28px/1.15 var(--serif);color:var(--lapis)}
-.welcome p{margin:0 0 12px}
-.steps{margin:14px 0 18px;padding:0;list-style:none;counter-reset:s}
-.steps li{position:relative;padding:0 0 14px 42px;counter-increment:s}
-.steps li::before{content:counter(s);position:absolute;left:0;top:-1px;width:28px;height:28px;border-radius:50%;background:var(--lapis);color:var(--gold-light);
-  display:grid;place-items:center;font:700 16px/1 var(--serif)}
-.small{font-size:15px;color:var(--muted)}
-.tip{margin:16px 0 0;padding:12px 14px;border-radius:12px;background:#FBF5E6;color:#5E4512;font-size:15px}
+/* Welcome */
+.wl{padding:6px 0 0}
+.wl-head{display:flex;flex-direction:column;align-items:center;text-align:center;padding:4px 28px 18px}
+.wl-head img{width:72px;height:72px;border-radius:17px;box-shadow:0 6px 18px rgba(0,0,0,.18);margin-bottom:12px}
+.wl-head h1{margin:0;font-size:28px;line-height:1.15;font-weight:700;letter-spacing:.36px}
+.wl-head p{margin:6px 0 0;font-size:15px;letter-spacing:-.24px;color:var(--label2)}
+.steps{--inset:56px}
+.steps li{display:flex;gap:14px;align-items:flex-start;padding:12px 16px 13px;font-size:15px;line-height:1.35;letter-spacing:-.24px}
+.num{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--blue);color:#fff;font-size:14px;font-weight:600;letter-spacing:0}
+.cta{display:block;width:calc(100% - 28px);height:52px;margin:4px 14px 14px;border:0;border-radius:26px;background:var(--blue);color:#fff;font-size:17px;font-weight:600}
+.foot{margin:4px 30px 0;font-size:13px;line-height:1.4;letter-spacing:-.08px;color:var(--label2)}
 
-/* Pins and clusters */
-.pin span{display:block;width:18px;height:18px;margin:3px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,var(--gold-light),var(--gold) 55%,#94691A);border:2.5px solid #fff;
-  box-shadow:0 1px 4px rgba(19,38,63,.45);transition:transform .15s}
-.pin-city span{background:#fff;border:3.5px solid var(--cinnabar)}
-.pin.is-sel span{transform:scale(1.45);box-shadow:0 0 0 4px rgba(30,58,95,.35),0 2px 6px rgba(0,0,0,.35)}
-.cl span{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--lapis);color:#fff;
-  font:700 15px/1 var(--sans);border:3px solid var(--gold);box-shadow:0 2px 8px rgba(19,38,63,.4)}
+/* Pins */
+.pin{position:relative}
+.pin span{position:absolute;left:0;top:0;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(180deg,#3E98FF,#0A6CF0);color:#fff;font:600 13px/1 var(--font);letter-spacing:0;
+  border:2.5px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.28);transition:transform .2s var(--ease);transform-origin:50% 120%}
+.pin span::after{content:"";position:absolute;left:50%;bottom:-7px;width:8px;height:8px;margin-left:-4px;background:#fff;transform:rotate(45deg);
+  border-radius:0 0 2px 0;z-index:-1}
+.pin span svg{width:58%;height:58%;fill:#fff}
+.pin.approx span{background:linear-gradient(180deg,#FFB13D,#F28A00)}
+.pin.is-sel span{transform:scale(1.25);box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.cl span{display:grid;place-items:center;width:42px;height:42px;border-radius:50%;background:linear-gradient(180deg,#3E98FF,#0A6CF0);color:#fff;
+  font:700 15px/1 var(--font);letter-spacing:0;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.3)}
 
-/* Menu dialog */
-dialog{width:100%;max-width:560px;margin:auto auto 0;border:0;border-radius:18px 18px 0 0;padding:22px 20px calc(20px + var(--safe-b));
-  background:var(--paper);color:var(--ink);max-height:90%;overflow:auto}
-dialog::backdrop{background:rgba(19,38,63,.38)}
-dialog h2{margin:0 0 4px;font:700 24px/1.2 var(--serif);color:var(--lapis)}
-.menu-stats{margin:0 0 16px;color:var(--muted);font-size:15px}
-.menu-list{display:grid;gap:10px}
-.credits{margin:18px 0 0;font-size:13px;color:var(--muted)}
-.credits a{color:inherit}
+/* Menu sheet */
+dialog{width:100%;max-width:560px;max-height:88%;margin:auto auto 8px;padding:0 0 calc(var(--safe-b) + 8px);border:0;border-radius:36px;color:var(--label);overflow:auto}
+dialog[open]{animation:up .38s var(--ease)}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+dialog::backdrop{background:rgba(0,0,0,.25)}
+.menu-head{display:flex;align-items:center;justify-content:space-between;padding:18px 16px 4px 22px}
+.menu-head h2{margin:0;font-size:22px;font-weight:700;letter-spacing:.35px}
+.menu-stats{margin:0 22px 16px;font-size:15px;letter-spacing:-.24px;color:var(--label2)}
+.menu-list{--inset:58px}
+.ico{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--c);color:#fff}
+.ico .i{width:18px;height:18px;stroke-width:2.2}
+.menu-list .act{color:var(--label)}
+.menu-list .act.destructive{color:var(--red)}
+.credits{margin:2px 22px 8px;font-size:13px;line-height:1.4;letter-spacing:-.08px;color:var(--label2)}
+.credits a{color:var(--label2);text-decoration:underline}
 
 /* Toast */
-.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 70px);z-index:1200;max-width:calc(100% - 32px);transform:translate(-50%,-12px);opacity:0;
-  padding:11px 16px;border-radius:12px;background:var(--lapis-deep);color:#fff;font-size:16px;text-align:center;pointer-events:none;
-  transition:opacity .2s,transform .2s}
-.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 70px);z-index:1200;max-width:calc(100% - 40px);padding:12px 18px;border-radius:22px;
+  font-size:15px;font-weight:600;letter-spacing:-.24px;text-align:center;pointer-events:none;opacity:0;transform:translate(-50%,-10px) scale(.96);
+  transition:opacity .25s,transform .35s var(--ease)}
+.toast.show{opacity:1;transform:translate(-50%,0) scale(1)}
 
 @media (min-width:700px){
-  .sheet{left:12px;right:auto;width:420px}
-  .topbar{right:auto;width:444px}
-  .fab{bottom:24px}
-  .progress{right:auto;left:446px;width:320px;bottom:24px}
-  .placing{right:auto;width:420px}
+  .sheet{left:12px;right:auto;width:400px;bottom:12px;height:calc(100% - 24px)}
   .leaflet-bottom{bottom:0}
-  html.sheet-tall .fab,html.sheet-tall .progress{opacity:1;pointer-events:auto}
+  .hud,.placing{left:424px;right:auto;width:360px}
+  html.sheet-tall .controls,html.sheet-tall .hud{opacity:1;pointer-events:auto}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 </style>
@@ -187,48 +237,61 @@ dialog h2{margin:0 0 4px;font:700 24px/1.2 var(--serif);color:var(--lapis)}
 <body>
 <div id="map" role="application" aria-label="Mapa"></div>
 
-<header class="topbar">
-  <button class="icon-btn" id="menuBtn" aria-label="Meni">
-    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+<div class="controls glass" id="controls">
+  <button type="button" id="fitBtn" aria-label="Prikaži sve na mapi">
+    <svg class="i" viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/></svg>
   </button>
-  <label class="search">
-    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
-    <input id="q" type="search" placeholder="Pretraži ime, ulicu ili mesto" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Pretraga">
-    <button type="button" class="clear" id="qClear" aria-label="Obriši pretragu" hidden>&times;</button>
-  </label>
-</header>
+  <span class="sep"></span>
+  <button type="button" id="locBtn" aria-label="Moja lokacija">
+    <svg class="i fill" viewBox="0 0 24 24"><path d="M20.3 3.7c.4.4.4.9.2 1.4l-6.8 14.8c-.5 1-2 .9-2.2-.2l-1.2-5.2a.9.9 0 0 0-.7-.7L5.1 12.6c-1.1-.3-1.2-1.7-.2-2.2l14-6.9c.5-.2 1-.2 1.4.2z"/></svg>
+  </button>
+</div>
 
-<div class="placing" id="placing" hidden>
+<div class="hud glass" id="progress" hidden><span class="spinner" aria-hidden="true"></span><span id="progressText"></span><span class="bar"><i id="progressBar"></i></span></div>
+
+<div class="placing glass" id="placing" hidden>
   <p id="placingText"></p>
   <button type="button" id="placingCancel">Otkaži</button>
 </div>
 
-<div class="progress" id="progress" hidden><span id="progressText"></span><span class="bar"><i id="progressBar"></i></span></div>
-<section class="sheet" id="sheet" aria-label="Spisak">
+<section class="sheet glass-thick mode-list" id="sheet" aria-label="Spisak">
   <div class="grab" id="grab"><span class="handle"></span></div>
-  <div id="sheetBody" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
-</section>
-<button class="fab" id="locBtn" aria-label="Moja lokacija">
-  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>
-</button>
-
-<dialog id="menu" aria-labelledby="menuTitle">
-  <h2 id="menuTitle">Mapa kontakata</h2>
-  <p class="menu-stats" id="menuStats"></p>
-  <div class="menu-list">
-    <button class="btn primary" data-act="import">Učitaj kontakte iz fajla</button>
-    <button class="btn" data-act="backup" id="backupBtn">Sačuvaj rezervnu kopiju</button>
-    <button class="btn" data-act="help">Kako izvesti kontakte sa iPhone-a</button>
-    <button class="btn danger" data-act="wipe" id="wipeBtn">Obriši sve podatke sa ovog telefona</button>
-    <button class="btn" data-act="close">Zatvori</button>
+  <div class="sheet-search">
+    <label class="search">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20"/></svg>
+      <input id="q" type="search" placeholder="Pretraži ime, ulicu ili mesto" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Pretraga">
+      <button type="button" class="clear" id="qClear" aria-label="Obriši pretragu" hidden>
+        <svg class="i fill" viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 1 0 0 19 9.5 9.5 0 0 0 0-19zm3.6 11.9a.85.85 0 0 1-1.2 1.2L12 13.2l-2.4 2.4a.85.85 0 0 1-1.2-1.2l2.4-2.4-2.4-2.4a.85.85 0 0 1 1.2-1.2l2.4 2.4 2.4-2.4a.85.85 0 0 1 1.2 1.2L13.2 12z"/></svg>
+      </button>
+    </label>
+    <button type="button" class="round" id="menuBtn" aria-label="Meni">
+      <svg class="i fill" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="18.5" cy="12" r="1.9"/></svg>
+    </button>
   </div>
-  <p class="credits">Kontakti se čuvaju samo na ovom telefonu. Da bi se adresa našla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona.<br><br>
+  <div id="sheetBody" class="sheet-body"></div>
+</section>
+
+<dialog id="menu" class="glass-thick" aria-labelledby="menuTitle">
+  <div class="menu-head">
+    <h2 id="menuTitle">Mapa kontakata</h2>
+    <button type="button" class="round sm" data-act="close" aria-label="Zatvori"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
+  <p class="menu-stats" id="menuStats"></p>
+  <ul class="group menu-list">
+    <li><button type="button" class="act" data-act="import"><span class="ico" style="--c:var(--blue)"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/></svg></span>Učitaj kontakte iz fajla</button></li>
+    <li id="backupRow"><button type="button" class="act" data-act="backup" id="backupBtn"><span class="ico" style="--c:var(--green)"><svg class="i" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M8 11H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1"/></svg></span>Sačuvaj rezervnu kopiju</button></li>
+    <li><button type="button" class="act" data-act="help"><span class="ico" style="--c:var(--indigo)"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5"/><path d="M12 16.8v.2"/></svg></span>Kako izvesti kontakte sa iPhone-a</button></li>
+  </ul>
+  <ul class="group menu-list" id="wipeGroup">
+    <li><button type="button" class="act destructive" data-act="wipe" id="wipeBtn"><span class="ico" style="--c:var(--red)"><svg class="i" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V5.2c0-.7.5-1.2 1.2-1.2h2.6c.7 0 1.2.5 1.2 1.2V7M6.5 7l.9 11.6A2 2 0 0 0 9.4 20.5h5.2a2 2 0 0 0 2-1.9L17.5 7"/></svg></span>Obriši sve podatke sa ovog telefona</button></li>
+  </ul>
+  <p class="credits">Kontakti se čuvaju samo na ovom telefonu. Da bi se adresa našla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona.<br>
   Mapa: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> saradnici. Pretraga adresa: <a href="https://nominatim.org">Nominatim</a>.</p>
 </dialog>
 
 <input type="file" id="file" hidden accept=".vcf,.vcard,.json,text/vcard,text/x-vcard,text/directory,application/json">
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-<span id="safeProbe" style="position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)"></span>
+<div class="toast glass" id="toast" role="status" aria-live="polite"></div>
+<span id="safeProbe" style="position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px);padding-top:env(safe-area-inset-top,0px)"></span>
 
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/leaflet.markercluster.js"></script>
@@ -461,15 +524,22 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const cluster = L.markerClusterGroup({
   showCoverageOnHover: false, maxClusterRadius: 46, spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true,
-  iconCreateFunction: c => L.divIcon({ html: '<span>' + c.getChildCount() + '</span>', className: 'cl', iconSize: [40, 40] })
+  iconCreateFunction: c => L.divIcon({ html: '<span>' + c.getChildCount() + '</span>', className: 'cl', iconSize: [42, 42] })
 });
 map.addLayer(cluster);
 const markers = new Map();
 let meMarker = null;
 
+function initials(name){
+  const w = String(name || '').replace(/[()]/g, ' ').split(/\s+/).filter(t => /\p{L}/u.test(t) && !/^(i|porodica|otac|madame)$/i.test(t));
+  if (!w.length) return '';
+  return ((w[0][0] || '') + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase();
+}
+const PERSON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20c.8-4 3.9-6 7.5-6s6.7 2 7.5 6z"/></svg>';
+function avatarInner(name){ const t = initials(name); return t ? esc(t) : PERSON; }
 function pinIcon(e, sel){
-  const cls = 'pin ' + (e.status === 'city' ? 'pin-city' : 'pin-ok') + (sel ? ' is-sel' : '');
-  return L.divIcon({ className: cls, html: '<span></span>', iconSize: [24, 24], iconAnchor: [12, 12] });
+  const cls = 'pin' + (e.status === 'city' ? ' approx' : '') + (sel ? ' is-sel' : '');
+  return L.divIcon({ className: cls, html: '<span>' + avatarInner(e.c.name) + '</span>', iconSize: [34, 41], iconAnchor: [17, 41] });
 }
 function drawMarkers(){
   cluster.clearLayers(); markers.clear();
@@ -487,15 +557,15 @@ function fitAll(list){
   if (!pts.length) return;
   const wide = window.innerWidth >= 700;
   map.fitBounds(L.latLngBounds(pts), wide
-    ? { paddingTopLeft: [460, 40], paddingBottomRight: [40, 40], maxZoom: 15 }
-    : { paddingTopLeft: [30, 80], paddingBottomRight: [30, sheetVisible() + 20], maxZoom: 15 });
+    ? { paddingTopLeft: [450, 50], paddingBottomRight: [80, 50], maxZoom: 15 }
+    : { paddingTopLeft: [30, safeTop() + 70], paddingBottomRight: [70, sheetVisible() + 30], maxZoom: 15 });
 }
 function focusEntry(e){
   // put the pin in the middle of the part of the map that is not covered by the sheet
   autoFit = false;
   const z = Math.max(map.getZoom(), 17);
   const wide = window.innerWidth >= 700;
-  const offset = wide ? 0 : Math.max(0, (sheetVisible() - 70) / 2);
+  const offset = wide ? 0 : Math.max(0, (sheetVisible() - safeTop() - 4) / 2);
   const p = map.project([e.lat, e.lng], z).add([wide ? -220 : 0, offset]);
   const m = markers.get(e.id);
   if (m) map.once('moveend', () => {
@@ -512,16 +582,19 @@ map.on('dragstart', () => { autoFit = false; });
 const sheet = $('#sheet');
 let sheetState = 'peek', sheetY = 0;
 function safeBottom(){ return parseFloat(getComputedStyle($('#safeProbe')).paddingBottom) || 0; }
+function safeTop(){ return parseFloat(getComputedStyle($('#safeProbe')).paddingTop) || 0; }
 function sheetStops(){
   const h = sheet.offsetHeight;
-  return { full: 0, half: Math.max(0, h - Math.round(window.innerHeight * 0.52)), peek: Math.max(0, h - (128 + safeBottom())) };
+  const peek = (view === 'list' ? 82 : 100) + Math.max(0, safeBottom() - 8);
+  return { full: 0, half: Math.max(0, h - Math.round(window.innerHeight * 0.5)), peek: Math.max(0, h - peek) };
 }
 function applySheetY(y){
   sheetY = y;
   sheet.style.transform = 'translateY(' + y + 'px)';
   const vis = sheet.offsetHeight - y, root = document.documentElement;
-  root.style.setProperty('--sv', Math.min(vis, window.innerHeight * 0.6) + 'px');
+  root.style.setProperty('--sv', Math.min(vis + 8, window.innerHeight * 0.6) + 'px');
   root.classList.toggle('sheet-tall', vis > window.innerHeight * 0.62);
+  root.classList.toggle('sheet-peek', vis < 130 + safeBottom());
 }
 function setSheet(state){ sheetState = state; applySheetY(sheetStops()[state]); }
 function sheetVisible(){ return sheet.offsetHeight - sheetStops()[sheetState]; }
@@ -552,7 +625,7 @@ window.addEventListener('resize', () => setSheet(sheetState));
     setSheet(best); d = null;
   };
   $('#grab').addEventListener('touchstart', start, { passive: true });
-  sheet.addEventListener('touchstart', ev => { if (ev.target.closest('.sheet-head')) start(ev); }, { passive: true });
+  sheet.addEventListener('touchstart', ev => { if (ev.target.closest('.sheet-head,.sheet-search,.card-head,.wl-head')) start(ev); }, { passive: true });
   window.addEventListener('touchmove', move, { passive: true });
   window.addEventListener('touchend', end);
   window.addEventListener('touchcancel', end);
@@ -561,9 +634,11 @@ window.addEventListener('resize', () => setSheet(sheetState));
 
 /* ---------- rendering ---------- */
 const ICON = {
-  back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
-  phone: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.5a11 11 0 005.9 5.9l1.5-2 4 1.5v3a2 2 0 01-2 2A16.5 16.5 0 014.5 5.5a2 2 0 012-2z"/></svg>',
-  nav: '<svg viewBox="0 0 24 24"><path d="M3.5 11L20 4l-7 16.5-2-7.5z"/></svg>'
+  close: '<svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  car: '<svg class="i" viewBox="0 0 24 24"><path d="M5.2 11.5l1.4-4.1A2 2 0 0 1 8.5 6h7a2 2 0 0 1 1.9 1.4l1.4 4.1"/><rect x="3.5" y="11.5" width="17" height="5.5" rx="1.6"/><path d="M6.5 17v1.6M17.5 17v1.6"/><path d="M7 14.2h.01M17 14.2h.01" stroke-width="2.6"/></svg>',
+  phone: '<svg class="i fill" viewBox="0 0 24 24"><path d="M7.2 3.3c.6-.3 1.3-.1 1.6.5l1.5 3.1c.3.6.1 1.2-.3 1.6L8.6 9.7a12 12 0 0 0 5.7 5.7l1.2-1.4c.4-.5 1-.6 1.6-.3l3.1 1.5c.6.3.8 1 .5 1.6l-.8 1.7c-.4.9-1.4 1.5-2.4 1.3C10.2 18.6 5.4 13.8 4.2 6.6c-.2-1 .4-2 1.3-2.4z"/></svg>',
+  pin: '<svg class="i" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.3"/></svg>',
+  chev: '<svg class="i chev" viewBox="0 0 9 14"><path d="M1.5 1.5 7 7l-5.5 5.5"/></svg>'
 };
 function km(e){
   if (!me || !e.hasPos) return null;
@@ -586,6 +661,8 @@ function render(){
   if (view === 'welcome') body.innerHTML = welcomeHTML();
   else if (view === 'detail' && byId.has(selectedId)) body.innerHTML = detailHTML(byId.get(selectedId));
   else { view = 'list'; body.innerHTML = listHTML(); }
+  sheet.classList.toggle('mode-list', view === 'list');
+  if (sheetState === 'peek') applySheetY(sheetStops().peek);
   updateLocBtn();
 }
 function renderListKeepScroll(){
@@ -602,14 +679,16 @@ function listHTML(){
   const byName = (a, b) => a.c.name.localeCompare(b.c.name, 'sr');
   if (me && tab === 'map') items = items.slice().sort((a, b) => (km(a) ?? 1e9) - (km(b) ?? 1e9) || byName(a, b));
   else items = items.slice().sort(byName);
-  const tabBtn = (k, label) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${label} <span class="n">${groups[k].length}</span></button>`;
+  const tabBtn = (k, label) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${label}<span class="n">${groups[k].length}</span></button>`;
   let rows = items.map(e => {
     const sub = e.adr ? adrLine(e.adr) : (e.c.tels[0] ? telText(e.c.tels[0].v) : 'Nema adrese');
-    const warn = isCheck(e) ? '<i class="warn-dot" aria-hidden="true"></i>' : '';
+    const warn = isCheck(e) ? '<i class="warn" aria-label="Adresa nije tačno pronađena">!</i>' : '';
     const lbl = e.c.adrs.length > 1 && e.adr && e.adr.label && !e.x ? ' (' + esc(e.adr.label) + ')' : '';
     const tag = e.x ? '<span class="tag">iz poruke</span>' : '';
-    return `<li><button class="row" data-id="${esc(e.id)}"><span class="row-main"><span class="name">${esc(e.c.name)}${lbl}${tag}</span>` +
-      `<span class="sub">${warn}${esc(sub)}</span></span><span class="row-meta">${tab === 'map' ? (e.status === 'pending' ? '<span class="small">traži se</span>' : fmtKm(km(e))) : ''}</span></button></li>`;
+    const meta = tab === 'map' ? (e.status === 'pending' ? 'traži se' : fmtKm(km(e))) : '';
+    return `<li><button class="row" data-id="${esc(e.id)}"><span class="avatar">${avatarInner(e.c.name)}</span>` +
+      `<span class="row-main"><span class="name">${esc(e.c.name)}${lbl}${tag}</span><span class="sub">${warn}${esc(sub)}</span></span>` +
+      (meta ? `<span class="row-meta">${meta}</span>` : '') + `</button></li>`;
   }).join('');
   if (!items.length){
     const msg = query ? 'Nema rezultata za ovu pretragu.'
@@ -619,65 +698,67 @@ function listHTML(){
   }
   const hint = tab === 'check' && items.length ? '<p class="hint">Ove adrese nisu tačno pronađene. Otvorite osobu i postavite tačku na mapi.</p>'
     : tab === 'noaddr' && items.length ? '<p class="hint">Ako znate gde neko živi, otvorite ga i postavite tačku na mapi.</p>' : '';
-  return `<div class="sheet-head"><div class="tabs" role="tablist">${tabBtn('map', 'Na mapi')}${tabBtn('check', 'Za proveru')}${tabBtn('noaddr', 'Bez adrese')}</div></div>` +
-    `<div class="sheet-scroll">${hint}<ul class="list">${rows}</ul></div>`;
+  return `<div class="sheet-head"><div class="seg" role="tablist">${tabBtn('map', 'Na mapi')}${tabBtn('check', 'Za proveru')}${tabBtn('noaddr', 'Bez adrese')}</div></div>` +
+    `<div class="sheet-scroll">${hint}<ul class="group people">${rows}</ul></div>`;
 }
 
 function detailHTML(e){
-  const c = e.c, a = e.adr;
+  const c = e.c, a = e.adr, x = e.x;
   const notes = {
     street: ['calm', 'Kućni broj nije pronađen, tačka je na ulici.'],
     city: ['', 'Ulica nije pronađena, pa je tačka u centru mesta. Pomerite je ako znate gde je kuća.'],
     none: ['', 'Ova adresa nije pronađena na mapi. Postavite tačku sami ako znate gde je kuća.'],
     manual: ['calm', 'Tačku ste sami postavili.'],
     pending: ['calm', 'Adresa se još traži na mapi.'],
-    noaddr: ['calm', e.x && e.x.url ? 'Adresa nije napisana, ali je poslata lokacija na mapi. Otvorite je i postavite tačku.' : 'Kontakt nema adresu.']
+    noaddr: ['calm', x && x.url ? 'Adresa nije napisana, ali je poslata lokacija na mapi. Otvorite je i postavite tačku.' : 'Kontakt nema adresu.']
   }[e.status];
-  const x = e.x;
-  const msg = x && x.note ? `<p class="d-msg"><small>Iz poruke${x !== c && x.name && x.name !== c.name ? ' (' + esc(x.name) + ')' : ''}</small>${esc(x.note)}</p>` : '';
-  const tels = c.tels.length ? c.tels : [];
   const first = c.tels.find(t => /mob|iphone/i.test(t.label)) || c.tels[0];
   const navHref = e.hasPos ? `https://maps.apple.com/?daddr=${e.lat},${e.lng}&dirflg=d` : '';
   const gHref = e.hasPos ? `https://www.google.com/maps/dir/?api=1&destination=${e.lat},${e.lng}` : '';
-  return `<div class="sheet-scroll"><div class="detail">
-    <button class="back" data-act="back">${ICON.back}Spisak</button>
-    <h2 class="d-name">${esc(c.name)}</h2>
-    ${c.org ? `<p class="d-org">${esc(c.org)}</p>` : ''}
-    ${a ? `<p class="d-adr">${a.label || x ? `<small>${esc(x ? 'Adresa iz poruke' : a.label)}</small>` : ''}${esc(a.street)}${a.street ? '<br>' : ''}${esc([a.zip, a.city].filter(Boolean).join(' '))}${a.country ? '<br>' + esc(a.country) : ''}</p>` : ''}
-    ${notes ? `<p class="note ${notes[0]}">${notes[1]}</p>` : ''}
-    ${msg}
-    <div class="actions">
-      ${first ? `<a class="btn" href="${telHref(first.v)}">${ICON.phone}Pozovi</a>` : `<span class="btn" aria-disabled="true">${ICON.phone}Nema broja</span>`}
-      ${e.hasPos ? `<a class="btn primary" href="${navHref}">${ICON.nav}Navigacija</a>` : `<button class="btn primary" data-act="place">Postavi na mapu</button>`}
+  const subParts = [c.org, a && (x ? 'adresa iz poruke' : a.label), a && a.city, fmtKm(km(e))].filter(Boolean);
+  const note = notes ? `<div class="note ${notes[0] ? '' : 'warnc'}"><span class="dot">${notes[0] ? 'i' : '!'}</span><span>${notes[1]}</span></div>` : '';
+  const info = [];
+  if (a) info.push(`<li><div class="kv"><span class="k">Adresa</span><span class="v">${esc([a.street, [a.zip, a.city].filter(Boolean).join(' '), a.country].filter(Boolean).join('\n'))}</span></div></li>`);
+  for (const t of c.tels) info.push(`<li><a class="kv" href="${telHref(t.v)}"><span class="k">${esc(t.label || 'telefon')}</span><span class="v">${esc(telText(t.v))}</span></a></li>`);
+  for (const m of (c.emails || [])) info.push(`<li><a class="kv" href="mailto:${esc(m)}"><span class="k">email</span><span class="v">${esc(m)}</span></a></li>`);
+  if (x && x.note) info.push(`<li><div class="kv"><span class="k">Iz poruke${x !== c && x.name && x.name !== c.name ? ' (' + esc(x.name) + ')' : ''}</span><span class="v">${esc(x.note)}</span></div></li>`);
+  const acts = [];
+  if (gHref) acts.push(`<li><a class="act" href="${gHref}">Otvori u Google mapama${ICON.chev}</a></li>`);
+  if (x && x.url) acts.push(`<li><a class="act" href="${esc(x.url)}">Lokacija poslata u poruci${ICON.chev}</a></li>`);
+  if (e.status === 'manual' && a) acts.push(`<li><button class="act" data-act="unplace">Vrati tačku sa adrese</button></li>`);
+  if (x && (a || x === c)) acts.push(`<li><button class="act destructive" data-act="hide">Ukloni ovu adresu iz poruke</button></li>`);
+  return `<div class="card-head"><span class="avatar lg">${avatarInner(c.name)}</span>` +
+    `<div class="t"><h2>${esc(c.name)}</h2>${subParts.length ? `<p>${esc(subParts.join(', '))}</p>` : ''}</div>` +
+    `<button class="round sm" data-act="back" aria-label="Zatvori">${ICON.close}</button></div>
+  <div class="sheet-scroll">
+    <div class="tiles">
+      ${e.hasPos ? `<a class="tile primary" href="${navHref}">${ICON.car}<span>Navigacija</span></a>` : `<button class="tile primary" data-act="place">${ICON.pin}<span>Postavi na mapu</span></button>`}
+      ${first ? `<a class="tile" href="${telHref(first.v)}">${ICON.phone}<span>Pozovi</span></a>` : `<span class="tile" aria-disabled="true">${ICON.phone}<span>Nema broja</span></span>`}
+      ${e.hasPos ? `<button class="tile" data-act="place">${ICON.pin}<span>Pomeri tačku</span></button>` : ''}
     </div>
-    ${c.tels.length ? `<ul class="phones">${c.tels.map(t => `<li><a href="${telHref(t.v)}">${esc(telText(t.v))}<span>${esc(t.label)}</span></a></li>`).join('')}</ul>` : ''}
-    <div class="links">
-      ${e.hasPos ? `<button data-act="place">Pomeri tačku</button>` : ''}
-      ${e.status === 'manual' && a ? `<button data-act="unplace">Vrati tačku sa adrese</button>` : ''}
-      ${gHref ? `<a href="${gHref}">Otvori u Google mapama</a>` : ''}
-      ${x && x.url ? `<a href="${esc(x.url)}">Lokacija poslata u poruci</a>` : ''}
-      ${x && (a || x === c) ? `<button data-act="hide">Ukloni ovu adresu iz poruke</button>` : ''}
-    </div>
-    ${c.emails && c.emails.length ? `<p class="small" style="margin-top:12px">${c.emails.map(esc).join('<br>')}</p>` : ''}
-  </div></div>`;
+    ${note}
+    ${info.length ? `<ul class="group">${info.join('')}</ul>` : ''}
+    ${acts.length ? `<ul class="group">${acts.join('')}</ul>` : ''}
+  </div>`;
 }
 
 function welcomeHTML(){
   const standalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
-  return `<div class="sheet-scroll"><div class="welcome">
-    ${contacts.length || extra.length ? `<button class="back" data-act="back">${ICON.back}Spisak</button>` : ''}
-    <h1>Kontakti na mapi</h1>
-    <p>Aplikacija čita adrese iz vaših kontakata i pokazuje na mapi gde ko živi. Prvo izvezite kontakte iz iPhone-a u fajl:</p>
-    <ol class="steps">
-      <li>Otvorite aplikaciju Kontakti i dodirnite <b>Liste</b> (gore levo).</li>
-      <li>Zadržite prst na <b>Svi kontakti</b> (All Contacts) i izaberite <b>Izvezi</b> (Export). Adrese i telefone ostavite uključene, fotografije možete isključiti.</li>
-      <li>Izaberite <b>Sačuvaj u Fajlove</b> (Save to Files) i sačuvajte.</li>
-      <li>Vratite se ovde, dodirnite dugme ispod i izaberite taj fajl.</li>
+  const hasData = contacts.length || extra.length;
+  return `<div class="sheet-scroll wl">
+    ${hasData ? `<div style="display:flex;justify-content:flex-end;padding:0 14px"><button class="round sm" data-act="back" aria-label="Zatvori">${ICON.close}</button></div>` : ''}
+    <div class="wl-head"><img src="icon-180.png" alt=""><h1>Mapa kontakata</h1><p>Vidite na mapi gde žive ljudi iz Vaših kontakata.</p></div>
+    <h3 class="sec">Kako da počnete</h3>
+    <ol class="group steps">
+      <li><span class="num">1</span><span>Otvorite aplikaciju Kontakti i dodirnite <b>Liste</b> gore levo.</span></li>
+      <li><span class="num">2</span><span>Zadržite prst na <b>Svi kontakti</b> (All Contacts) i izaberite <b>Izvezi</b> (Export). Adrese i telefone ostavite uključene.</span></li>
+      <li><span class="num">3</span><span>Izaberite <b>Sačuvaj u Fajlove</b> (Save to Files).</span></li>
+      <li><span class="num">4</span><span>Vratite se ovde, dodirnite dugme ispod i izaberite taj fajl.</span></li>
     </ol>
-    <button class="btn primary wide" data-act="import" style="width:100%">Učitaj kontakte</button>
-    ${standalone ? '' : `<p class="tip">Savet: najpre dodajte ovu stranicu na početni ekran (dugme Podeli, pa „Dodaj na početni ekran“), otvorite je sa te ikonice i tek onda učitajte kontakte. Safari i ikonica na početnom ekranu ne dele podatke.</p>`}
-    <p class="small" style="margin-top:16px">Kontakti ostaju samo na ovom telefonu. Da bi se adresa pronašla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona. Pronalaženje ide polako, oko jedna adresa u sekundi, i nastavlja se samo kad ponovo otvorite aplikaciju.</p>
-  </div></div>`;
+    <button class="cta" data-act="import">Učitaj kontakte</button>
+    ${standalone ? '' : `<div class="note"><span class="dot" style="background:var(--blue)">i</span><span>Najpre dodajte ovu stranicu na početni ekran (Podeli, pa „Dodaj na početni ekran“) i otvorite je sa te ikonice. Safari i ikonica na početnom ekranu ne dele podatke.</span></div>`}
+    <p class="foot">Kontakti ostaju samo na ovom telefonu. Da bi se adresa našla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona. Traženje ide oko jedna adresa u sekundi i nastavlja se kad ponovo otvorite aplikaciju.</p>
+  </div>`;
 }
 
 /* ---------- interactions ---------- */
@@ -743,7 +824,9 @@ $('#q').addEventListener('input', ev => {
     if (query && sheetState === 'peek') setSheet('half');
   }, 120);
 });
-$('#q').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.target.blur(); fitAll(); } });
+$('#q').addEventListener('focus', () => { if (sheetState !== 'full') setSheet('full'); });
+$('#q').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.target.blur(); setSheet('half'); fitAll(); } });
+$('#fitBtn').addEventListener('click', () => { autoFit = false; fitAll(); });
 $('#qClear').addEventListener('click', () => { const q = $('#q'); q.value = ''; q.dispatchEvent(new Event('input')); q.focus(); });
 
 /* location */
@@ -753,8 +836,12 @@ function locate(fly){
   navigator.geolocation.getCurrentPosition(pos => {
     me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
     store.set(K.loc, true);
-    if (!meMarker) meMarker = L.circleMarker([me.lat, me.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#2F7DE1', fillOpacity: 1, interactive: false }).addTo(map);
-    else meMarker.setLatLng([me.lat, me.lng]);
+    if (!meMarker){
+      meMarker = L.layerGroup([
+        L.circleMarker([me.lat, me.lng], { radius: 20, stroke: false, fillColor: '#0A84FF', fillOpacity: .16, interactive: false }),
+        L.circleMarker([me.lat, me.lng], { radius: 7.5, color: '#fff', weight: 3, fillColor: '#0A84FF', fillOpacity: 1, interactive: false })
+      ]).addTo(map);
+    } else meMarker.eachLayer(l => l.setLatLng([me.lat, me.lng]));
     if (fly) map.flyTo([me.lat, me.lng], Math.max(map.getZoom(), 14), { duration: .6 });
     renderListKeepScroll(); updateLocBtn();
   }, err => {
@@ -772,7 +859,7 @@ $('#menuBtn').addEventListener('click', () => {
     ? `${contacts.length} ${pl(contacts.length, 'kontakt', 'kontakta', 'kontakata')}: ${onMap} na mapi, ${chk} za proveru, ${no} bez adrese.` +
       (fromMsgs ? ` Adresa iz poruka: ${fromMsgs}.` : '')
     : 'Kontakti još nisu učitani.';
-  $('#backupBtn').hidden = $('#wipeBtn').hidden = !(contacts.length || extra.length);
+  $('#backupRow').hidden = $('#wipeGroup').hidden = !(contacts.length || extra.length);
   menu.showModal();
 });
 menu.addEventListener('click', ev => {
