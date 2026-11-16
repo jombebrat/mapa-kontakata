@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="sr-Latn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mapa">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Mapa kontakata</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.css">
+<style>
+:root{
+  --lapis:#1E3A5F;
+  --lapis-deep:#13263F;
+  --gold:#C8962E;
+  --gold-light:#F1D58A;
+  --cinnabar:#B03A2A;
+  --ink:#1B2230;
+  --muted:#5B6474;
+  --mist:#E8EBF0;
+  --paper:#FFFFFF;
+  --wash:#F3F5F8;
+  --sv:140px;               /* visible height of the bottom sheet, set by script */
+  --safe-b:env(safe-area-inset-bottom, 0px);
+  --safe-t:env(safe-area-inset-top, 0px);
+  --sans:"Alegreya Sans", -apple-system, system-ui, sans-serif;
+  --serif:"Alegreya", Georgia, serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--wash);color:var(--ink);font:400 17px/1.4 var(--sans);-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* Map */
+#map{position:fixed;inset:0;background:#E9ECEF}
+.leaflet-container{font-family:var(--sans)}
+.leaflet-bottom{bottom:var(--sv);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
+.leaflet-control-attribution{font-size:11px;background:rgba(255,255,255,.8)!important}
+
+/* Top bar */
+.topbar{position:fixed;left:0;right:0;top:0;z-index:1100;display:flex;gap:10px;align-items:center;
+  padding:calc(var(--safe-t) + 10px) 12px 10px;pointer-events:none}
+.topbar>*{pointer-events:auto}
+.icon-btn{flex:none;width:48px;height:48px;border-radius:50%;border:0;background:var(--paper);display:grid;place-items:center;
+  box-shadow:0 2px 10px rgba(19,38,63,.18)}
+.icon-btn svg{width:22px;height:22px;stroke:var(--lapis);stroke-width:2;fill:none;stroke-linecap:round}
+.search{flex:1;display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 16px;border-radius:24px;background:var(--paper);
+  box-shadow:0 2px 10px rgba(19,38,63,.18)}
+.search svg{flex:none;width:19px;height:19px;stroke:var(--muted);stroke-width:2;fill:none;stroke-linecap:round}
+.search input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:17px;height:100%;-webkit-appearance:none;appearance:none}
+.search input::-webkit-search-cancel-button{display:none}
+.search input::placeholder{color:#8A93A3}
+.clear{flex:none;width:36px;height:36px;border:0;border-radius:50%;background:var(--wash);font-size:20px;line-height:1;color:var(--muted)}
+
+/* Placement banner */
+.placing{position:fixed;left:12px;right:12px;top:calc(var(--safe-t) + 68px);z-index:1100;display:flex;align-items:center;gap:12px;
+  padding:12px 12px 12px 16px;border-radius:14px;background:var(--lapis);color:#fff;box-shadow:0 6px 20px rgba(19,38,63,.3)}
+.placing p{margin:0;flex:1;font-size:16px;line-height:1.3}
+.placing button{flex:none;border:0;border-radius:10px;padding:9px 14px;background:rgba(255,255,255,.16);color:#fff;font-weight:500}
+
+/* Floating controls above the sheet */
+.fab{position:fixed;right:14px;bottom:calc(var(--sv) + 14px);z-index:1050;width:50px;height:50px;border-radius:50%;border:0;background:var(--paper);
+  display:grid;place-items:center;box-shadow:0 2px 10px rgba(19,38,63,.22);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
+.fab svg{width:24px;height:24px;stroke:var(--lapis);stroke-width:2;fill:none}
+.fab.on svg{stroke:#2F7DE1}
+.progress{position:fixed;left:14px;right:78px;bottom:calc(var(--sv) + 18px);z-index:1050;display:flex;flex-direction:column;gap:6px;
+  padding:9px 14px 10px;border-radius:14px;background:var(--lapis);color:#fff;font-size:15px;line-height:1.25;
+  box-shadow:0 4px 14px rgba(19,38,63,.28);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
+.progress .bar{display:block;height:4px;border-radius:2px;background:rgba(255,255,255,.2);overflow:hidden}
+.progress .bar i{display:block;height:100%;width:0;background:var(--gold-light);transition:width .4s}
+
+/* Bottom sheet */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1000;height:calc(100% - var(--safe-t) - 70px);display:flex;flex-direction:column;
+  background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -4px 22px rgba(19,38,63,.16);
+  transform:translateY(60%);transition:transform .28s cubic-bezier(.2,.8,.2,1);will-change:transform}
+html.dragging .sheet,html.dragging .fab,html.dragging .progress,html.dragging .leaflet-bottom{transition:none}
+html.sheet-tall .fab,html.sheet-tall .progress{opacity:0;pointer-events:none}
+.fab,.progress{transition:bottom .28s cubic-bezier(.2,.8,.2,1),opacity .2s}
+.grab{flex:none;padding:8px 0 4px;touch-action:none}
+.handle{display:block;width:40px;height:5px;margin:0 auto;border-radius:3px;background:#CDD2DA}
+.sheet-head{flex:none;padding:6px 16px 10px;touch-action:none}
+.sheet-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:calc(var(--safe-b) + 24px)}
+
+.tabs{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--wash)}
+.tabs button{flex:1;border:0;background:transparent;border-radius:9px;padding:8px 4px;font-size:15px;font-weight:500;color:var(--muted);white-space:nowrap}
+.tabs button[aria-selected="true"]{background:var(--paper);color:var(--lapis);box-shadow:0 1px 3px rgba(19,38,63,.14)}
+.tabs .n{font-weight:400;opacity:.75}
+
+.list{list-style:none;margin:0;padding:0}
+.row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 18px;border:0;background:transparent;text-align:left;border-bottom:1px solid #EEF0F4}
+.row:active{background:var(--wash)}
+.row-main{flex:1;min-width:0}
+.name{display:block;font:500 19px/1.2 var(--serif);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{display:block;margin-top:2px;font-size:15px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub .warn-dot{display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;border:2px solid var(--cinnabar);vertical-align:1px}
+.row-meta{flex:none;font-size:15px;color:var(--lapis);font-weight:500}
+.empty{padding:28px 22px;color:var(--muted);font-size:16px;text-align:center}
+.hint{margin:14px 18px 0;font-size:15px;color:var(--muted)}
+
+/* Detail */
+.detail{padding:4px 18px 0}
+.back{display:inline-flex;align-items:center;gap:4px;margin:0 0 8px -6px;padding:6px 8px;border:0;background:transparent;color:var(--lapis);font-weight:500;font-size:16px}
+.back svg{width:18px;height:18px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.d-name{margin:0;font:700 27px/1.15 var(--serif);color:var(--ink)}
+.d-org{margin:4px 0 0;color:var(--muted)}
+.d-adr{margin:12px 0 0;font-size:17px}
+.d-adr small{display:block;font-size:14px;color:var(--muted)}
+.note{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#FBF1EE;color:#7A2A1F;font-size:15px}
+.note.calm{background:var(--wash);color:var(--muted)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:10px 14px;border-radius:13px;border:1.5px solid var(--mist);
+  background:var(--paper);color:var(--lapis);font-weight:700;font-size:17px;text-decoration:none;text-align:center}
+.btn svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.btn.primary{background:var(--lapis);border-color:var(--lapis);color:#fff}
+.btn.wide{grid-column:1/-1}
+.btn.danger{color:var(--cinnabar)}
+.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.phones{list-style:none;margin:16px 0 0;padding:0;border-top:1px solid #EEF0F4}
+.phones a{display:flex;justify-content:space-between;gap:12px;padding:12px 2px;border-bottom:1px solid #EEF0F4;color:var(--ink);text-decoration:none;font-size:17px}
+.phones a span{color:var(--muted);font-size:15px}
+.links{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0}
+.links a,.links button{padding:6px 0;border:0;background:none;color:var(--lapis);font-size:16px;text-decoration:underline;text-underline-offset:3px}
+
+/* Welcome / instructions */
+.welcome{padding:6px 22px 0}
+.welcome h1{margin:0 0 6px;font:700 28px/1.15 var(--serif);color:var(--lapis)}
+.welcome p{margin:0 0 12px}
+.steps{margin:14px 0 18px;padding:0;list-style:none;counter-reset:s}
+.steps li{position:relative;padding:0 0 14px 42px;counter-increment:s}
+.steps li::before{content:counter(s);position:absolute;left:0;top:-1px;width:28px;height:28px;border-radius:50%;background:var(--lapis);color:var(--gold-light);
+  display:grid;place-items:center;font:700 16px/1 var(--serif)}
+.small{font-size:15px;color:var(--muted)}
+.tip{margin:16px 0 0;padding:12px 14px;border-radius:12px;background:#FBF5E6;color:#5E4512;font-size:15px}
+
+/* Pins and clusters */
+.pin span{display:block;width:18px;height:18px;margin:3px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,var(--gold-light),var(--gold) 55%,#94691A);border:2.5px solid #fff;
+  box-shadow:0 1px 4px rgba(19,38,63,.45);transition:transform .15s}
+.pin-city span{background:#fff;border:3.5px solid var(--cinnabar)}
+.pin.is-sel span{transform:scale(1.45);box-shadow:0 0 0 4px rgba(30,58,95,.35),0 2px 6px rgba(0,0,0,.35)}
+.cl span{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--lapis);color:#fff;
+  font:700 15px/1 var(--sans);border:3px solid var(--gold);box-shadow:0 2px 8px rgba(19,38,63,.4)}
+
+/* Menu dialog */
+dialog{width:100%;max-width:560px;margin:auto auto 0;border:0;border-radius:18px 18px 0 0;padding:22px 20px calc(20px + var(--safe-b));
+  background:var(--paper);color:var(--ink);max-height:90%;overflow:auto}
+dialog::backdrop{background:rgba(19,38,63,.38)}
+dialog h2{margin:0 0 4px;font:700 24px/1.2 var(--serif);color:var(--lapis)}
+.menu-stats{margin:0 0 16px;color:var(--muted);font-size:15px}
+.menu-list{display:grid;gap:10px}
+.credits{margin:18px 0 0;font-size:13px;color:var(--muted)}
+.credits a{color:inherit}
+
+/* Toast */
+.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 70px);z-index:1200;max-width:calc(100% - 32px);transform:translate(-50%,-12px);opacity:0;
+  padding:11px 16px;border-radius:12px;background:var(--lapis-deep);color:#fff;font-size:16px;text-align:center;pointer-events:none;
+  transition:opacity .2s,transform .2s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Mapa"></div>
+
+<header class="topbar">
+  <button class="icon-btn" id="menuBtn" aria-label="Meni">
+    <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <label class="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+    <input id="q" type="search" placeholder="Pretraži ime, ulicu ili mesto" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Pretraga">
+    <button type="button" class="clear" id="qClear" aria-label="Obriši pretragu" hidden>&times;</button>
+  </label>
+</header>
+
+<div class="placing" id="placing" hidden>
+  <p id="placingText"></p>
+  <button type="button" id="placingCancel">Otkaži</button>
+</div>
+
+<div class="progress" id="progress" hidden><span id="progressText"></span><span class="bar"><i id="progressBar"></i></span></div>
+<section class="sheet" id="sheet" aria-label="Spisak">
+  <div class="grab" id="grab"><span class="handle"></span></div>
+  <div id="sheetBody" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+</section>
+<button class="fab" id="locBtn" aria-label="Moja lokacija">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></svg>
+</button>
+
+<dialog id="menu" aria-labelledby="menuTitle">
+  <h2 id="menuTitle">Mapa kontakata</h2>
+  <p class="menu-stats" id="menuStats"></p>
+  <div class="menu-list">
+    <button class="btn primary" data-act="import">Učitaj kontakte iz fajla</button>
+    <button class="btn" data-act="backup" id="backupBtn">Sačuvaj rezervnu kopiju</button>
+    <button class="btn" data-act="help">Kako izvesti kontakte sa iPhone-a</button>
+    <button class="btn danger" data-act="wipe" id="wipeBtn">Obriši sve podatke sa ovog telefona</button>
+    <button class="btn" data-act="close">Zatvori</button>
+  </div>
+  <p class="credits">Kontakti se čuvaju samo na ovom telefonu. Da bi se adresa našla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona.<br><br>
+  Mapa: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> saradnici, © <a href="https://carto.com/attributions">CARTO</a>. Pretraga adresa: <a href="https://nominatim.org">Nominatim</a>.</p>
+</dialog>
+
+<input type="file" id="file" hidden accept=".vcf,.vcard,.json,text/vcard,text/x-vcard,text/directory,application/json">
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<span id="safeProbe" style="position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom,0px)"></span>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/leaflet.markercluster.js"></script>
+<script>
+'use strict';
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function pl(n, one, few, many){ const a = n % 10, b = n % 100; if (a === 1 && b !== 11) return one; if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few; return many; }
+function hash(s){ let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+
+const CYR = {'а':'a','б':'b','в':'v','г':'g','д':'d','ђ':'dj','е':'e','ж':'z','з':'z','и':'i','ј':'j','к':'k','л':'l','љ':'lj','м':'m','н':'n','њ':'nj','о':'o','п':'p','р':'r','с':'s','т':'t','ћ':'c','у':'u','ф':'f','х':'h','ц':'c','ч':'c','џ':'dz','ш':'s'};
+function norm(s){
+  return String(s || '').toLowerCase()
+    .replace(/[Ѐ-ӿ]/g, ch => CYR[ch] ?? ch)
+    .replace(/đ/g, 'dj')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/dj/g, 'd')
+    .replace(/\s+/g, ' ').trim();
+}
+
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  del(k){ try { localStorage.removeItem(k); } catch {} }
+};
+const K = { contacts:'mk.contacts', geo:'mk.geo', pins:'mk.pins', loc:'mk.loc' };
+
+/* ---------- vCard parsing ---------- */
+function unescapeText(s){ return s.replace(/\\([nN,;:\\])/g, (m, c) => (c === 'n' || c === 'N') ? '\n' : c); }
+function splitStruct(v){
+  const out = []; let cur = '';
+  for (let i = 0; i < v.length; i++){
+    const c = v[i];
+    if (c === '\\' && i + 1 < v.length){ cur += c + v[i + 1]; i++; continue; }
+    if (c === ';'){ out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  out.push(cur);
+  return out.map(x => unescapeText(x).trim());
+}
+function decodeQP(s, charset){
+  const bytes = [];
+  for (let i = 0; i < s.length; i++){
+    const c = s[i];
+    if (c === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i + 1, 2))){ bytes.push(parseInt(s.substr(i + 1, 2), 16)); i += 2; }
+    else { const code = c.charCodeAt(0); if (code < 128) bytes.push(code); else for (const b of new TextEncoder().encode(c)) bytes.push(b); }
+  }
+  try { return new TextDecoder(charset || 'utf-8').decode(new Uint8Array(bytes)); }
+  catch { return new TextDecoder('utf-8').decode(new Uint8Array(bytes)); }
+}
+const LABELS = { home:'Kuća', work:'Posao', other:'Drugo', cell:'mobilni', mobile:'mobilni', iphone:'iPhone', main:'glavni', fax:'faks', pager:'pejdžer', voice:'' };
+function labelFrom(types, ab){
+  if (ab){
+    const m = ab.match(/^_\$!<(.+)>!\$_$/);
+    const k = (m ? m[1] : ab).toLowerCase();
+    return LABELS[k] ?? (m ? m[1] : ab);
+  }
+  for (const t of types){ if (t in LABELS && LABELS[t]) return LABELS[t]; }
+  return '';
+}
+
+function parseVCards(text){
+  text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '');
+  const lines = text.split('\n');
+  const cards = [];
+  let card = null;
+  for (let i = 0; i < lines.length; i++){
+    let line = lines[i];
+    if (!line.trim()) continue;
+    // split "group.NAME;params:value" at the first colon outside quotes
+    let colon = -1, inQ = false;
+    for (let j = 0; j < line.length; j++){ const ch = line[j]; if (ch === '"') inQ = !inQ; else if (ch === ':' && !inQ){ colon = j; break; } }
+    if (colon < 0) continue;
+    const head = line.slice(0, colon);
+    let value = line.slice(colon + 1);
+    const parts = head.split(';');
+    let name = parts[0], group = '';
+    const dot = name.indexOf('.');
+    if (dot > -1){ group = name.slice(0, dot).toLowerCase(); name = name.slice(dot + 1); }
+    name = name.toUpperCase();
+    const types = []; let enc = '', charset = '';
+    for (const p of parts.slice(1)){
+      const eq = p.indexOf('=');
+      const k = (eq > -1 ? p.slice(0, eq) : 'TYPE').toUpperCase();
+      const v = (eq > -1 ? p.slice(eq + 1) : p).replace(/"/g, '');
+      if (k === 'TYPE') v.split(',').forEach(t => types.push(t.toLowerCase().trim()));
+      else if (k === 'ENCODING') enc = v.toUpperCase();
+      else if (k === 'CHARSET') charset = v;
+      else if (k === 'QUOTED-PRINTABLE' || v.toUpperCase() === 'QUOTED-PRINTABLE') enc = 'QUOTED-PRINTABLE';
+    }
+    if (enc === 'QUOTED-PRINTABLE'){
+      while (value.endsWith('=') && i + 1 < lines.length){ value = value.slice(0, -1) + lines[++i]; }
+      value = decodeQP(value, charset);
+    }
+    if (name === 'BEGIN' && /vcard/i.test(value)){ card = { fn:'', n:null, org:'', nick:'', tels:[], adrs:[], ablabel:{}, abadr:{} }; continue; }
+    if (!card) continue;
+    if (enc === 'B' || enc === 'BASE64') continue;
+    switch (name){
+      case 'FN': card.fn = unescapeText(value).trim(); break;
+      case 'N': card.n = splitStruct(value); break;
+      case 'ORG': card.org = splitStruct(value)[0] || ''; break;
+      case 'NICKNAME': card.nick = unescapeText(value).trim(); break;
+      case 'TEL': { const v = unescapeText(value).trim(); if (v) card.tels.push({ v, types, group }); break; }
+      case 'ADR': {
+        const [pobox = '', ext = '', street = '', city = '', region = '', zip = '', country = ''] = splitStruct(value);
+        if ([street, city, region, zip, country].some(Boolean)) card.adrs.push({ street, ext, city, region, zip, country, types, group });
+        break;
+      }
+      case 'X-ABLABEL': if (group) card.ablabel[group] = unescapeText(value).trim(); break;
+      case 'X-ABADR': if (group) card.abadr[group] = value.trim().toLowerCase(); break;
+      case 'END': if (/vcard/i.test(value)){ cards.push(card); card = null; } break;
+    }
+  }
+  const seen = {};
+  return cards.map(c => {
+    let name = c.fn;
+    if (!name && c.n){ const [fam = '', giv = '', add = '', pre = '', suf = ''] = c.n; name = [pre, giv, add, fam, suf].filter(Boolean).join(' '); }
+    if (!name) name = c.org || c.nick || (c.tels[0] && c.tels[0].v) || 'Bez imena';
+    const tels = c.tels.map(t => ({ v: t.v, label: labelFrom(t.types, t.group && c.ablabel[t.group]) }));
+    const adrs = c.adrs.map(a => {
+      const lines = a.street.split('\n').map(s => s.trim()).filter(Boolean);
+      const street1 = lines[0] || '';
+      const city = a.city || '';
+      const country = a.country || '';
+      const cc = (a.group && c.abadr[a.group]) || '';
+      const key = norm([street1, a.zip, city || a.region, country || cc].join('|'));
+      return { street: lines.join(', '), street1, city, region: a.region, zip: a.zip, country, cc: /^[a-z]{2}$/.test(cc) ? cc : '',
+               label: labelFrom(a.types, a.group && c.ablabel[a.group]), key };
+    });
+    let id = hash(norm(name) + '|' + (tels[0] ? tels[0].v.replace(/\D/g, '') : '') + '|' + (adrs[0] ? adrs[0].key : ''));
+    seen[id] = (seen[id] || 0) + 1; if (seen[id] > 1) id += '-' + seen[id];
+    return { id, name, org: c.org && c.org !== name ? c.org : '', tels, adrs };
+  });
+}
+
+/* ---------- state ---------- */
+let contacts = store.get(K.contacts, []);
+let geo = store.get(K.geo, {});
+let pins = store.get(K.pins, {});
+let entries = [];
+let byId = new Map();
+let tab = 'map';
+let query = '';
+let view = contacts.length ? 'list' : 'welcome';
+let selectedId = null;
+let me = null;
+let placing = null;
+
+function saveAll(){
+  const ok = store.set(K.contacts, contacts) && store.set(K.geo, geo) && store.set(K.pins, pins);
+  if (!ok) toast('Telefon nije dozvolio čuvanje podataka. Proverite da Safari nije u privatnom režimu.');
+}
+
+function buildEntries(){
+  entries = [];
+  for (const c of contacts){
+    if (!c.adrs.length){
+      const key = 'n:' + c.id, p = pins[key];
+      entries.push({ id: c.id, c, adr: null, key, lat: p && p.lat, lng: p && p.lng, status: p ? 'manual' : 'noaddr' });
+      continue;
+    }
+    c.adrs.forEach((a, i) => {
+      const key = a.street1 ? 'a:' + a.key : 'p:' + c.id + '|' + a.key;
+      const p = pins[key], g = geo[a.key];
+      let status, lat, lng;
+      if (p){ status = 'manual'; lat = p.lat; lng = p.lng; }
+      else if (!g) status = 'pending';
+      else if (g.q === 'none') status = 'none';
+      else { status = g.q; lat = g.lat; lng = g.lng; }
+      entries.push({ id: c.id + '#' + i, c, adr: a, key, lat, lng, status });
+    });
+  }
+  for (const e of entries){
+    e.hay = norm([e.c.name, e.c.org, e.adr && e.adr.street, e.adr && e.adr.city, e.adr && e.adr.zip, e.adr && e.adr.region].filter(Boolean).join(' '));
+    e.hasPos = typeof e.lat === 'number' && typeof e.lng === 'number';
+  }
+  byId = new Map(entries.map(e => [e.id, e]));
+}
+const isCheck = e => e.status === 'city' || e.status === 'none';
+function visibleEntries(){ return query ? entries.filter(e => e.hay.includes(query)) : entries; }
+
+/* ---------- map ---------- */
+const map = L.map('map', { zoomControl: false, attributionControl: true, tap: false }).setView([45.5, 14], 5);
+map.attributionControl.setPrefix(false);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19, subdomains: 'abcd',
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>'
+}).addTo(map);
+
+const cluster = L.markerClusterGroup({
+  showCoverageOnHover: false, maxClusterRadius: 46, spiderfyOnMaxZoom: true, zoomToBoundsOnClick: true,
+  iconCreateFunction: c => L.divIcon({ html: '<span>' + c.getChildCount() + '</span>', className: 'cl', iconSize: [40, 40] })
+});
+map.addLayer(cluster);
+const markers = new Map();
+let meMarker = null;
+
+function pinIcon(e, sel){
+  const cls = 'pin ' + (e.status === 'city' ? 'pin-city' : 'pin-ok') + (sel ? ' is-sel' : '');
+  return L.divIcon({ className: cls, html: '<span></span>', iconSize: [24, 24], iconAnchor: [12, 12] });
+}
+function drawMarkers(){
+  cluster.clearLayers(); markers.clear();
+  const list = [];
+  for (const e of visibleEntries()){
+    if (!e.hasPos) continue;
+    const m = L.marker([e.lat, e.lng], { icon: pinIcon(e, e.id === selectedId), title: e.c.name, keyboard: true });
+    m.on('click', () => select(e.id, false));
+    markers.set(e.id, m); list.push(m);
+  }
+  cluster.addLayers(list);
+}
+function fitAll(list){
+  const pts = (list || visibleEntries()).filter(e => e.hasPos).map(e => [e.lat, e.lng]);
+  if (!pts.length) return;
+  map.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [30, 80], paddingBottomRight: [30, sheetVisible() + 20], maxZoom: 15 });
+}
+function focusEntry(e){
+  // put the pin in the middle of the part of the map that is not covered by the sheet
+  autoFit = false;
+  const z = Math.max(map.getZoom(), 17);
+  const offset = Math.max(0, (sheetVisible() - 70) / 2);
+  const p = map.project([e.lat, e.lng], z).add([0, offset]);
+  const m = markers.get(e.id);
+  if (m) map.once('moveend', () => {
+    // people living at the same address sit in one cluster: fan them out
+    const par = cluster.getVisibleParent(m);
+    if (par && par !== m && par.spiderfy) par.spiderfy();
+  });
+  map.flyTo(map.unproject(p, z), z, { duration: .6 });
+}
+let autoFit = false;
+map.on('dragstart', () => { autoFit = false; });
+
+/* ---------- bottom sheet ---------- */
+const sheet = $('#sheet');
+let sheetState = 'peek', sheetY = 0;
+function safeBottom(){ return parseFloat(getComputedStyle($('#safeProbe')).paddingBottom) || 0; }
+function sheetStops(){
+  const h = sheet.offsetHeight;
+  return { full: 0, half: Math.max(0, h - Math.round(window.innerHeight * 0.52)), peek: Math.max(0, h - (128 + safeBottom())) };
+}
+function applySheetY(y){
+  sheetY = y;
+  sheet.style.transform = 'translateY(' + y + 'px)';
+  const vis = sheet.offsetHeight - y, root = document.documentElement;
+  root.style.setProperty('--sv', Math.min(vis, window.innerHeight * 0.6) + 'px');
+  root.classList.toggle('sheet-tall', vis > window.innerHeight * 0.62);
+}
+function setSheet(state){ sheetState = state; applySheetY(sheetStops()[state]); }
+function sheetVisible(){ return sheet.offsetHeight - sheetStops()[sheetState]; }
+window.addEventListener('resize', () => setSheet(sheetState));
+
+(function enableDrag(){
+  let d = null;
+  const start = ev => {
+    if (ev.target.closest('button,input,a')) return;
+    d = { y0: ev.touches[0].clientY, t0: sheetY, moved: false, grab: !!ev.target.closest('#grab') };
+    document.documentElement.classList.add('dragging');
+  };
+  const move = ev => {
+    if (!d) return;
+    const dy = ev.touches[0].clientY - d.y0;
+    if (Math.abs(dy) > 5) d.moved = true;
+    const s = sheetStops();
+    applySheetY(Math.min(s.peek, Math.max(0, d.t0 + dy)));
+  };
+  const end = () => {
+    if (!d) return;
+    document.documentElement.classList.remove('dragging');
+    const s = sheetStops();
+    if (!d.moved){ if (d.grab) setSheet(sheetState === 'peek' ? 'half' : sheetState === 'half' ? 'full' : 'peek'); d = null; return; }
+    const vel = sheetY - d.t0;
+    let best = 'peek', bestD = Infinity;
+    for (const [k, v] of Object.entries(s)){ const dist = Math.abs(v - sheetY - (vel > 0 ? -40 : 40)); if (dist < bestD){ bestD = dist; best = k; } }
+    setSheet(best); d = null;
+  };
+  $('#grab').addEventListener('touchstart', start, { passive: true });
+  sheet.addEventListener('touchstart', ev => { if (ev.target.closest('.sheet-head')) start(ev); }, { passive: true });
+  window.addEventListener('touchmove', move, { passive: true });
+  window.addEventListener('touchend', end);
+  window.addEventListener('touchcancel', end);
+  $('#grab').addEventListener('click', () => { if (!('ontouchstart' in window)) setSheet(sheetState === 'peek' ? 'half' : sheetState === 'half' ? 'full' : 'peek'); });
+})();
+
+/* ---------- rendering ---------- */
+const ICON = {
+  back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M6.5 3.5h3l1.5 4-2 1.5a11 11 0 005.9 5.9l1.5-2 4 1.5v3a2 2 0 01-2 2A16.5 16.5 0 014.5 5.5a2 2 0 012-2z"/></svg>',
+  nav: '<svg viewBox="0 0 24 24"><path d="M3.5 11L20 4l-7 16.5-2-7.5z"/></svg>'
+};
+function km(e){
+  if (!me || !e.hasPos) return null;
+  const R = 6371, toR = Math.PI / 180;
+  const dLat = (e.lat - me.lat) * toR, dLng = (e.lng - me.lng) * toR;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(me.lat * toR) * Math.cos(e.lat * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function fmtKm(d){
+  if (d == null) return '';
+  if (d < 1) return Math.max(10, Math.round(d * 100) * 10) + ' m';
+  return d.toLocaleString('sr-Latn', { maximumFractionDigits: d < 10 ? 1 : 0 }) + ' km';
+}
+function adrLine(a){ if (!a) return ''; return [a.street, [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') || a.region || a.country; }
+function telHref(v){ return 'tel:' + v.replace(/[^\d+]/g, ''); }
+
+function render(){
+  const body = $('#sheetBody');
+  if (view === 'welcome') body.innerHTML = welcomeHTML();
+  else if (view === 'detail' && byId.has(selectedId)) body.innerHTML = detailHTML(byId.get(selectedId));
+  else { view = 'list'; body.innerHTML = listHTML(); }
+  updateLocBtn();
+}
+function renderListKeepScroll(){
+  if (view !== 'list') return;
+  const sc = $('#sheetBody .sheet-scroll'); const top = sc ? sc.scrollTop : 0;
+  render();
+  const sc2 = $('#sheetBody .sheet-scroll'); if (sc2) sc2.scrollTop = top;
+}
+
+function listHTML(){
+  const vis = visibleEntries();
+  const groups = { map: vis.filter(e => e.hasPos), check: vis.filter(isCheck), noaddr: vis.filter(e => e.status === 'noaddr') };
+  let items = groups[tab];
+  const byName = (a, b) => a.c.name.localeCompare(b.c.name, 'sr');
+  if (me && tab === 'map') items = items.slice().sort((a, b) => km(a) - km(b) || byName(a, b));
+  else items = items.slice().sort(byName);
+  const tabBtn = (k, label) => `<button role="tab" data-tab="${k}" aria-selected="${tab === k}">${label} <span class="n">${groups[k].length}</span></button>`;
+  let rows = items.map(e => {
+    const sub = e.adr ? adrLine(e.adr) : (e.c.tels[0] ? e.c.tels[0].v : 'Nema adrese');
+    const warn = isCheck(e) ? '<i class="warn-dot" aria-hidden="true"></i>' : '';
+    const lbl = e.c.adrs.length > 1 && e.adr && e.adr.label ? ' (' + esc(e.adr.label) + ')' : '';
+    return `<li><button class="row" data-id="${esc(e.id)}"><span class="row-main"><span class="name">${esc(e.c.name)}${lbl}</span>` +
+      `<span class="sub">${warn}${esc(sub)}</span></span><span class="row-meta">${tab === 'map' ? fmtKm(km(e)) : ''}</span></button></li>`;
+  }).join('');
+  if (!items.length){
+    const msg = query ? 'Nema rezultata za ovu pretragu.'
+      : tab === 'map' ? (entries.some(e => e.status === 'pending') ? 'Adrese se upravo traže na mapi.' : 'Još niko nije na mapi.')
+      : tab === 'check' ? 'Sve adrese su pronađene.' : 'Svi kontakti imaju adresu.';
+    rows = `<li class="empty">${msg}</li>`;
+  }
+  const hint = tab === 'check' && items.length ? '<p class="hint">Ove adrese nisu tačno pronađene. Otvorite osobu i postavite tačku na mapi.</p>'
+    : tab === 'noaddr' && items.length ? '<p class="hint">Ako znate gde neko živi, otvorite ga i postavite tačku na mapi.</p>' : '';
+  return `<div class="sheet-head"><div class="tabs" role="tablist">${tabBtn('map', 'Na mapi')}${tabBtn('check', 'Za proveru')}${tabBtn('noaddr', 'Bez adrese')}</div></div>` +
+    `<div class="sheet-scroll">${hint}<ul class="list">${rows}</ul></div>`;
+}
+
+function detailHTML(e){
+  const c = e.c, a = e.adr;
+  const notes = {
+    street: ['calm', 'Kućni broj nije pronađen, tačka je na ulici.'],
+    city: ['', 'Ulica nije pronađena, pa je tačka u centru mesta. Pomerite je ako znate gde je kuća.'],
+    none: ['', 'Ova adresa nije pronađena na mapi. Postavite tačku sami ako znate gde je kuća.'],
+    manual: ['calm', 'Tačku ste sami postavili.'],
+    pending: ['calm', 'Adresa se još traži na mapi.'],
+    noaddr: ['calm', 'Kontakt nema adresu.']
+  }[e.status];
+  const first = c.tels.find(t => /mob|iphone/i.test(t.label)) || c.tels[0];
+  const navHref = e.hasPos ? `https://maps.apple.com/?daddr=${e.lat},${e.lng}&dirflg=d` : '';
+  const gHref = e.hasPos ? `https://www.google.com/maps/dir/?api=1&destination=${e.lat},${e.lng}` : '';
+  return `<div class="sheet-scroll"><div class="detail">
+    <button class="back" data-act="back">${ICON.back}Spisak</button>
+    <h2 class="d-name">${esc(c.name)}</h2>
+    ${c.org ? `<p class="d-org">${esc(c.org)}</p>` : ''}
+    ${a ? `<p class="d-adr">${a.label ? `<small>${esc(a.label)}</small>` : ''}${esc(a.street)}${a.street ? '<br>' : ''}${esc([a.zip, a.city].filter(Boolean).join(' '))}${a.country ? '<br>' + esc(a.country) : ''}</p>` : ''}
+    ${notes ? `<p class="note ${notes[0]}">${notes[1]}</p>` : ''}
+    <div class="actions">
+      ${first ? `<a class="btn" href="${telHref(first.v)}">${ICON.phone}Pozovi</a>` : `<span class="btn" aria-disabled="true">${ICON.phone}Nema broja</span>`}
+      ${e.hasPos ? `<a class="btn primary" href="${navHref}">${ICON.nav}Navigacija</a>` : `<button class="btn primary" data-act="place">Postavi na mapu</button>`}
+    </div>
+    ${c.tels.length ? `<ul class="phones">${c.tels.map(t => `<li><a href="${telHref(t.v)}">${esc(t.v)}<span>${esc(t.label)}</span></a></li>`).join('')}</ul>` : ''}
+    <div class="links">
+      ${e.hasPos ? `<button data-act="place">Pomeri tačku</button>` : ''}
+      ${e.status === 'manual' && a ? `<button data-act="unplace">Vrati tačku sa adrese</button>` : ''}
+      ${gHref ? `<a href="${gHref}">Otvori u Google mapama</a>` : ''}
+    </div>
+  </div></div>`;
+}
+
+function welcomeHTML(){
+  const standalone = window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  return `<div class="sheet-scroll"><div class="welcome">
+    ${contacts.length ? `<button class="back" data-act="back">${ICON.back}Spisak</button>` : ''}
+    <h1>Kontakti na mapi</h1>
+    <p>Aplikacija čita adrese iz vaših kontakata i pokazuje na mapi gde ko živi. Prvo izvezite kontakte iz iPhone-a u fajl:</p>
+    <ol class="steps">
+      <li>Otvorite aplikaciju Kontakti i dodirnite <b>Liste</b> (gore levo).</li>
+      <li>Zadržite prst na <b>Svi kontakti</b> (All Contacts) i izaberite <b>Izvezi</b> (Export). Adrese i telefone ostavite uključene, fotografije možete isključiti.</li>
+      <li>Izaberite <b>Sačuvaj u Fajlove</b> (Save to Files) i sačuvajte.</li>
+      <li>Vratite se ovde, dodirnite dugme ispod i izaberite taj fajl.</li>
+    </ol>
+    <button class="btn primary wide" data-act="import" style="width:100%">Učitaj kontakte</button>
+    ${standalone ? '' : `<p class="tip">Savet: najpre dodajte ovu stranicu na početni ekran (dugme Podeli, pa „Dodaj na početni ekran“), otvorite je sa te ikonice i tek onda učitajte kontakte. Safari i ikonica na početnom ekranu ne dele podatke.</p>`}
+    <p class="small" style="margin-top:16px">Kontakti ostaju samo na ovom telefonu. Da bi se adresa pronašla na mapi, servisu OpenStreetMap šalje se samo adresa, bez imena i brojeva telefona. Pronalaženje ide polako, oko jedna adresa u sekundi, i nastavlja se samo kad ponovo otvorite aplikaciju.</p>
+  </div></div>`;
+}
+
+/* ---------- interactions ---------- */
+function select(id, fly = true){
+  const prev = selectedId;
+  selectedId = id; view = 'detail';
+  const e = byId.get(id); if (!e) return;
+  if (prev && markers.get(prev) && byId.get(prev)) markers.get(prev).setIcon(pinIcon(byId.get(prev), false));
+  if (markers.get(id)) markers.get(id).setIcon(pinIcon(e, true));
+  render();
+  if (sheetState !== 'half') setSheet('half');
+  if (e.hasPos) focusEntry(e);
+}
+function deselect(){
+  const prev = selectedId; selectedId = null; view = 'list';
+  if (prev && markers.get(prev) && byId.get(prev)) markers.get(prev).setIcon(pinIcon(byId.get(prev), false));
+  render();
+}
+
+$('#sheetBody').addEventListener('click', ev => {
+  const t = ev.target.closest('[data-tab],[data-id],[data-act]'); if (!t) return;
+  if (t.dataset.tab){ tab = t.dataset.tab; render(); if (sheetState === 'peek') setSheet('half'); return; }
+  if (t.dataset.id){ select(t.dataset.id); return; }
+  const act = t.dataset.act;
+  if (act === 'back'){ if (view === 'welcome') view = 'list'; deselect(); }
+  else if (act === 'import') $('#file').click();
+  else if (act === 'place') startPlacing(byId.get(selectedId));
+  else if (act === 'unplace'){ const e = byId.get(selectedId); delete pins[e.key]; saveAll(); refresh(); runGeocoder(); }
+});
+
+function startPlacing(e){
+  if (!e) return;
+  placing = e;
+  $('#placingText').textContent = 'Dodirnite mapu tamo gde je kuća: ' + e.c.name;
+  $('#placing').hidden = false;
+  setSheet('peek');
+}
+function stopPlacing(){ placing = null; $('#placing').hidden = true; }
+$('#placingCancel').addEventListener('click', () => { stopPlacing(); setSheet('half'); });
+map.on('click', ev => {
+  if (!placing) return;
+  const e = placing; stopPlacing();
+  pins[e.key] = { lat: +ev.latlng.lat.toFixed(6), lng: +ev.latlng.lng.toFixed(6) };
+  saveAll(); refresh();
+  toast('Tačka je sačuvana.');
+  select(e.id);
+});
+
+let searchTimer = 0;
+$('#q').addEventListener('input', ev => {
+  clearTimeout(searchTimer);
+  $('#qClear').hidden = !ev.target.value;
+  searchTimer = setTimeout(() => {
+    query = norm(ev.target.value);
+    if (view !== 'welcome'){ view = 'list'; selectedId = null; }
+    drawMarkers(); render();
+    if (query && sheetState === 'peek') setSheet('half');
+  }, 120);
+});
+$('#q').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.target.blur(); fitAll(); } });
+$('#qClear').addEventListener('click', () => { const q = $('#q'); q.value = ''; q.dispatchEvent(new Event('input')); q.focus(); });
+
+/* location */
+function updateLocBtn(){ $('#locBtn').classList.toggle('on', !!me); }
+function locate(fly){
+  if (!navigator.geolocation){ toast('Lokacija nije dostupna na ovom uređaju.'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    store.set(K.loc, true);
+    if (!meMarker) meMarker = L.circleMarker([me.lat, me.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#2F7DE1', fillOpacity: 1, interactive: false }).addTo(map);
+    else meMarker.setLatLng([me.lat, me.lng]);
+    if (fly) map.flyTo([me.lat, me.lng], Math.max(map.getZoom(), 14), { duration: .6 });
+    renderListKeepScroll(); updateLocBtn();
+  }, err => {
+    if (fly) toast(err.code === 1 ? 'Lokacija je isključena. Uključite je u Podešavanjima: Privatnost, Lokacija, Safari.' : 'Lokacija trenutno nije dostupna.');
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+$('#locBtn').addEventListener('click', () => locate(true));
+
+/* menu */
+const menu = $('#menu');
+$('#menuBtn').addEventListener('click', () => {
+  const onMap = entries.filter(e => e.hasPos).length, chk = entries.filter(isCheck).length, no = entries.filter(e => e.status === 'noaddr').length;
+  $('#menuStats').textContent = contacts.length
+    ? `${contacts.length} ${pl(contacts.length, 'kontakt', 'kontakta', 'kontakata')}: ${onMap} na mapi, ${chk} za proveru, ${no} bez adrese.`
+    : 'Kontakti još nisu učitani.';
+  $('#backupBtn').hidden = $('#wipeBtn').hidden = !contacts.length;
+  menu.showModal();
+});
+menu.addEventListener('click', ev => {
+  if (ev.target === menu){
+    const r = menu.getBoundingClientRect();
+    if (ev.clientY < r.top || ev.clientY > r.bottom || ev.clientX < r.left || ev.clientX > r.right){ menu.close(); return; }
+  }
+  const act = ev.target.closest('[data-act]') && ev.target.closest('[data-act]').dataset.act; if (!act) return;
+  menu.close();
+  if (act === 'import') $('#file').click();
+  else if (act === 'backup') backup();
+  else if (act === 'help'){ view = 'welcome'; render(); setSheet('full'); }
+  else if (act === 'wipe') wipe();
+});
+
+/* import / backup */
+$('#file').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; ev.target.value = '';
+  if (!f) return;
+  let text;
+  try { text = await f.text(); } catch { toast('Fajl nije moguće pročitati.'); return; }
+  if (/^\s*\{/.test(text)) return restore(text);
+  if (!/BEGIN:VCARD/i.test(text)){ toast('Ovo nije fajl sa kontaktima. Izaberite fajl koji se završava na .vcf.'); return; }
+  const list = parseVCards(text);
+  if (!list.length){ toast('U ovom fajlu nema kontakata.'); return; }
+  contacts = list; saveAll();
+  view = 'list'; tab = 'map'; selectedId = null; autoFit = true;
+  refresh(); setSheet('half'); fitAll();
+  const withAdr = list.filter(c => c.adrs.length).length;
+  toast(`Učitano: ${list.length} ${pl(list.length, 'kontakt', 'kontakta', 'kontakata')}, od toga ${withAdr} sa adresom.`);
+  runGeocoder();
+});
+function restore(text){
+  let d; try { d = JSON.parse(text); } catch { toast('Rezervna kopija je oštećena.'); return; }
+  if (!d || d.app !== 'mapa-kontakata' || !Array.isArray(d.contacts)){ toast('Ovo nije rezervna kopija ove aplikacije.'); return; }
+  contacts = d.contacts; geo = Object.assign(geo, d.geo || {}); pins = Object.assign(pins, d.pins || {});
+  saveAll(); view = 'list'; tab = 'map'; autoFit = true; refresh(); setSheet('half'); fitAll();
+  toast('Rezervna kopija je vraćena.');
+  runGeocoder();
+}
+async function backup(){
+  const data = JSON.stringify({ app: 'mapa-kontakata', v: 1, savedAt: new Date().toISOString(), contacts, geo, pins });
+  const name = 'mapa-kontakata-' + new Date().toISOString().slice(0, 10) + '.json';
+  const file = new File([data], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })){ await navigator.share({ files: [file], title: name }); return; }
+  } catch (err){ if (err && err.name === 'AbortError') return; }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function wipe(){
+  if (!confirm('Obrisati sve kontakte i tačke sa ovog telefona? Kontakti u iPhone-u ostaju netaknuti.')) return;
+  Object.values(K).forEach(k => store.del(k));
+  contacts = []; geo = {}; pins = {}; me = null; selectedId = null; view = 'welcome';
+  if (meMarker){ map.removeLayer(meMarker); meMarker = null; }
+  refresh(); setSheet('full');
+  toast('Podaci su obrisani.');
+}
+
+/* ---------- geocoding (OpenStreetMap Nominatim, max 1 request per second) ---------- */
+let geoRunning = false, lastReq = 0, wake = null;
+async function holdScreen(){ try { if (navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); } catch {} }
+function releaseScreen(){ try { if (wake) wake.release(); } catch {} wake = null; }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && geoRunning) holdScreen(); });
+
+function cleanStreet(s){
+  return String(s || '')
+    .replace(/\b(b\.?\s?b\.?|bez broja)(?=\s|,|$)/ig, '')
+    .replace(/\b(br\.|broj)\s*/ig, '')
+    .replace(/,?\s*(stan|st\.|sprat|ulaz|apt\.?|appartement|bât\.?|bat\.|étage)\s*[\w\d-]*\s*$/i, '')
+    .replace(/(\d+[a-zA-Z]?)\s*\/\s*[\w\d]+/, '$1')
+    .replace(/\s{2,}/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '');
+}
+function stripHouseNumber(s){
+  let t = s.replace(/^\s*\d+\s*(bis|ter|[a-zA-Z])?\s*,?\s+(?=\D)/i, '');
+  if (t === s) t = s.replace(/[\s,]+\d+\s*[a-zA-Z]?\s*$/, '');
+  return t.trim();
+}
+async function nominatim(params){
+  const wait = lastReq + 1100 - Date.now(); if (wait > 0) await sleep(wait);
+  lastReq = Date.now();
+  const sp = new URLSearchParams({ format: 'jsonv2', limit: '1' });
+  for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
+  const r = await fetch('https://nominatim.openstreetmap.org/search?' + sp.toString());
+  if (r.status === 429 || r.status >= 500) throw new Error('busy');
+  if (!r.ok) return null;
+  const j = await r.json();
+  return (Array.isArray(j) && j[0]) || null;
+}
+async function geocodeAddress(a){
+  const cc = a.cc ? { countrycodes: a.cc } : {};
+  const city = a.city || a.region;
+  const street = cleanStreet(a.street1);
+  const bare = street ? stripHouseNumber(street) : '';
+  const place = [a.zip, city].filter(Boolean).join(' ');
+  const tries = [];
+  if (street && city){
+    tries.push(['exact', { street, city, postalcode: a.zip, country: a.country, ...cc }]);
+    tries.push(['exact', { q: [street, place, a.country].filter(Boolean).join(', '), ...cc }]);
+    if (bare && bare !== street) tries.push(['street', { street: bare, city, country: a.country, ...cc }]);
+  } else if (street){
+    tries.push(['city', { q: [street, a.zip, a.country].filter(Boolean).join(', '), ...cc }]);
+  }
+  if (city){
+    tries.push(['city', { city, postalcode: a.zip, country: a.country, ...cc }]);
+    tries.push(['city', { q: [city, a.country].filter(Boolean).join(', '), ...cc }]);
+  } else if (a.zip){
+    tries.push(['city', { postalcode: a.zip, country: a.country, ...cc }]);
+  }
+  for (const [q, params] of tries){
+    const hit = await nominatim(params);
+    if (hit) return { q, lat: +(+hit.lat).toFixed(6), lng: +(+hit.lon).toFixed(6) };
+  }
+  return { q: 'none' };
+}
+function pendingAddresses(){
+  const seen = new Set(), out = [];
+  for (const e of entries){
+    if (e.status !== 'pending' || seen.has(e.adr.key)) continue;
+    seen.add(e.adr.key); out.push(e.adr);
+  }
+  return out;
+}
+function showProgress(text, frac){
+  $('#progress').hidden = false;
+  $('#progressText').textContent = text;
+  $('#progressBar').style.width = Math.round((frac || 0) * 100) + '%';
+}
+async function runGeocoder(){
+  if (geoRunning) return;
+  let todo = pendingAddresses();
+  if (!todo.length){ $('#progress').hidden = true; return; }
+  geoRunning = true; holdScreen();
+  const total = todo.length; let done = 0, sinceDraw = 0;
+  for (let i = 0; i < todo.length; i++){
+    const a = todo[i];
+    if (geo[a.key]){ done++; continue; }
+    if (!navigator.onLine){
+      showProgress('Nema interneta. Traženje adresa se nastavlja kad se veza vrati.', done / total);
+      await new Promise(r => window.addEventListener('online', r, { once: true }));
+    }
+    const left = total - done;
+    const mins = Math.ceil(left * 1.4 / 60);
+    showProgress(`Tražim adrese na mapi: ${done} od ${total}` + (left > 40 ? `, još oko ${mins} min` : ''), done / total);
+    try {
+      geo[a.key] = await geocodeAddress(a);
+    } catch {
+      showProgress('Server za mape je zauzet. Nastavljam za minut.', done / total);
+      await sleep(60000); i--; continue;
+    }
+    done++; sinceDraw++;
+    store.set(K.geo, geo);
+    if (sinceDraw >= 5 || done === total){ sinceDraw = 0; buildEntries(); drawMarkers(); renderListKeepScroll(); if (autoFit) fitAll(); }
+  }
+  geoRunning = false; releaseScreen();
+  buildEntries(); drawMarkers(); renderListKeepScroll();
+  if (autoFit) fitAll();
+  const chk = entries.filter(isCheck).length;
+  $('#progress').hidden = true;
+  toast(chk ? `Gotovo. ${chk} ${pl(chk, 'adresu', 'adrese', 'adresa')} treba proveriti.` : 'Gotovo. Sve adrese su na mapi.');
+  // contacts may have been re-imported meanwhile
+  if (pendingAddresses().length) runGeocoder();
+}
+
+/* ---------- misc ---------- */
+let toastTimer = 0;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
+}
+function refresh(){ buildEntries(); drawMarkers(); render(); }
+
+/* ---------- start ---------- */
+refresh();
+setSheet(contacts.length ? 'peek' : 'full');
+if (contacts.length) fitAll();
+if (store.get(K.loc, false)) locate(false);
+autoFit = entries.some(e => e.status === 'pending');
+runGeocoder();
+</script>
+</body>
+</html>
